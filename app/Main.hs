@@ -2,7 +2,8 @@ module Main where
 
 import Control.Monad
 import qualified Data.Map as M
-import Lib
+import Parser
+import Logic
 
 main :: IO ()
 main = do print natF
@@ -23,7 +24,7 @@ output' vars (state@State { substitutions = ss }:n) = do forM_ (zip vars ['X', '
 infixr 9 //
 (//) = Compound
 
-sampleQuery = ([Variable 1], eval (M.fromList natF) [] [] ("nat"//[Variable 1]))
+sampleQuery = ([Variable 1], eval (M.fromList natF) [] ("nat"//[Variable 1]))
 --sampleQuery = ([Variable 1], callFresh nat)
 --sampleQuery = ([Variable 1], callFresh $ \x -> summa ("s"//["s"//["0"//[]]]) ("s"//["s"//["0"//[]]]) x)
 
@@ -31,4 +32,5 @@ summa x y s = (x #= "0"//[] #&# y #= s) #|# callFresh (\z -> x #= "s"//[z] #&# s
 
 nat x = callFresh $ \y -> (x #= "0"//[]) #|# (nat y #&# x #= "s"//[y])
 
-natF = [("nat", (";"//["="//[Variable 0, "0"//[]], ","//["nat"//[Variable 1], "="//[Variable 0, "s"//[Variable 1]]]], [0]))]
+natF = [(("nat", 1), [("nat"//[Variable 0], ";"//["="//[Variable 0, "0"//[]], ","//["nat"//[Variable 1], "="//[Variable 0, "s"//[Variable 1]]]])])]
+--natF = case parseCode "nat(X) :- X = 0. nat(X) :- nat(Y), X = s(Y)." of Right t -> t
