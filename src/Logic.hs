@@ -25,9 +25,9 @@ instance Show Expr where
 
 type SMap = M.Map Int Expr
 
-data State = State { substitutions :: SMap, counter :: Int } deriving Show
+data Substitutions = Substitutions { substitutions :: SMap, counter :: Int } deriving Show
 
-addSubstitution :: Int -> Expr -> State -> State
+addSubstitution :: Int -> Expr -> Substitutions -> Substitutions
 addSubstitution v x state = state { substitutions = M.insert v x (substitutions state) }
 
 substitute :: Int -> Expr -> Expr -> Expr
@@ -36,13 +36,13 @@ substitute v r (Compound f as) = Compound f $ map (substitute v r) as
 
 -- Goal
 
-type Goal = State -> [State]
+type Goal = Substitutions -> [Substitutions]
 
-walk :: State -> Expr -> Expr
+walk :: Substitutions -> Expr -> Expr
 walk state x@(Variable v) = fromMaybe x $ walk state <$> M.lookup v (substitutions state)
 walk _     x              = x
 
-deepWalk :: State -> Expr -> Expr
+deepWalk :: Substitutions -> Expr -> Expr
 deepWalk state x@(Variable v)    = fromMaybe x $ deepWalk state <$> M.lookup v (substitutions state)
 deepWalk state x@(Compound f as) = Compound f $ map (deepWalk state) as
 deepWalk _     x                 = x
@@ -105,7 +105,7 @@ eval :: M.Map (String, Int) [(Expr, Expr)] -> [(Int, Expr)] -> Expr -> Goal
 --eval fs hvs e state | trace ("fs="++show fs++" hvs="++show hvs++" e="++show e++" state="++show state) False = undefined
 eval fs hvs e
   | null vs   = eval' fs hvs e
-  | otherwise = fresh (length vs) (\vs' ss -> eval' fs (hvs ++ zip vs vs') e ss)
+  | otherwise = fresh (length vs) (\vs' -> eval' fs (hvs ++ zip vs vs') e)
   where vs = nub $ searchVars (map fst hvs) e
 
 searchVars :: [Int] -> Expr -> [Int]
