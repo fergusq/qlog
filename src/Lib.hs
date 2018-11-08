@@ -1,18 +1,26 @@
 module Lib where
 import Control.Applicative
+import Data.List
 import Data.Maybe
 import qualified Data.Map as M
 
-data Expr = Variable String
+data Expr = Variable Int
           | Compound String [Expr]
-          deriving (Show, Eq)
+          deriving (Eq)
 
-data State = State { substitutions :: M.Map String Expr, counter :: Int }
+instance Show Expr where
+  show (Variable v) = "_" ++ show v
+  show (Compound f []) = f
+  show (Compound f as) = f ++ "(" ++ intercalate ", " (map show as) ++ ")"
 
-addSubstitution :: String -> Expr -> State -> State
+type SMap = M.Map Int Expr
+
+data State = State { substitutions :: SMap, counter :: Int }
+
+addSubstitution :: Int -> Expr -> State -> State
 addSubstitution v x state = state { substitutions = M.insert v x (substitutions state) }
 
-substitute :: String -> Expr -> Expr -> Expr
+substitute :: Int -> Expr -> Expr -> Expr
 substitute v r expr@(Variable u) = if v == u then r else expr
 substitute v r (Compound f as) = Compound f $ map (substitute v r) as
 
@@ -45,7 +53,12 @@ unifyAll (_:_) [] _ = []
 unifyAll [] (_:_) _ = []
 unifyAll (x:xs) (y:ys) state = unify x y state >>= unifyAll xs ys
 
+infixr 4 #=
+
 (#=) = unify
+
+infixl 3 #|#
+infixl 3 #&#
 
 (#|#) :: Goal -> Goal -> Goal
 (#|#) x y state = x state <|> y state
@@ -56,7 +69,7 @@ unifyAll (x:xs) (y:ys) state = unify x y state >>= unifyAll xs ys
 callFresh :: (Expr -> Goal) -> Goal
 callFresh f state = let c = counter state + 1
                         state' = state { counter = c }
-                    in f (Variable ('_':show c)) state'
+                    in f (Variable c) state'
 
 fresh vs = fresh' vs []
 
