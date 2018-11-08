@@ -2,35 +2,41 @@ module Main where
 
 import Control.Monad
 import qualified Data.Map as M
-import Parser
+import System.Environment
+import System.Exit
+import System.IO
+
+import Lib
 import Logic
+import Parser
 
 main :: IO ()
-main = do print natF
-          let (vars, goal) = sampleQuery
-          output vars $ goal (State {substitutions=M.empty, counter=0})
+main = do [code] <- getArgs
+          case compileFacts code of
+            Left error -> print error >> exitFailure
+            Right fs -> do queryLoop fs
 
-output :: [Expr] -> [State] -> IO ()
+queryLoop :: M.Map (String, Int) [(Expr, Expr)] -> IO ()
+queryLoop fs = do putStr "?- "
+                  hFlush stdout
+                  query <- getLine
+                  case parseExpression query of
+                    Left error -> print error >> exitFailure
+                    Right expr -> do let vars = map (Variable.(1+)) $ searchVars [] expr
+                                     let goal = eval fs [] expr
+                                     output vars $ goal (Substitutions {substitutions=M.empty, counter=0})
+                                     queryLoop fs
+
+output :: [Expr] -> [Substitutions] -> IO ()
 output vars [] = putStrLn "Ei."
 output vars states = putStrLn "Kyllä." >> output' vars states
 
-output' :: [Expr] -> [State] -> IO ()
+output' :: [Expr] -> [Substitutions] -> IO ()
 output' vars [] = putStrLn "."
-output' vars (state@State { substitutions = ss }:n) = do forM_ (zip vars ['X', 'Y', 'Z']) $ \(e, v) ->
-                                                           putStrLn $ (v:" = ") ++ show (deepWalk state e)
-                                                         getLine
-                                                         output' vars n
-
-infixr 9 //
-(//) = Compound
-
-sampleQuery = ([Variable 1], eval (M.fromList natF) [] ("nat"//[Variable 1]))
---sampleQuery = ([Variable 1], callFresh nat)
---sampleQuery = ([Variable 1], callFresh $ \x -> summa ("s"//["s"//["0"//[]]]) ("s"//["s"//["0"//[]]]) x)
-
-summa x y s = (x #= "0"//[] #&# y #= s) #|# callFresh (\z -> x #= "s"//[z] #&# summa z ("s"//[y]) s)
-
-nat x = callFresh $ \y -> (x #= "0"//[]) #|# (nat y #&# x #= "s"//[y])
-
-natF = [(("nat", 1), [("nat"//[Variable 0], ";"//["="//[Variable 0, "0"//[]], ","//["nat"//[Variable 1], "="//[Variable 0, "s"//[Variable 1]]]])])]
---natF = case parseCode "nat(X) :- X = 0. nat(X) :- nat(Y), X = s(Y)." of Right t -> t
+output' vars (state@Substitutions { substitutions = ss }:n)
+  = do forM_ (zip vars ['X', 'Y', 'Z']) $ \(e, v) ->
+         putStrLn $ (v:" = ") ++ show (deepWalk state e)
+       unless (null n) $ do
+         line <- getLine
+         when (null line) $
+           output' vars n
