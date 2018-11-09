@@ -27,7 +27,7 @@ tokenp :: TParser (LNToken String)
 tokenp = lnToken (some (oneOfL "0123456789"))
          <|> identifier
          <|> acceptL ":-"
-         <|> (((:"")<$>) <$> oneOfL "().,;=")
+         <|> (((:"")<$>) <$> oneOfL "()[]{}<>.,;=|")
 
 tokensp :: String -> TParser [LNToken String]
 tokensp eof = many (many space *> tokenp) <* many space <* acceptL eof
@@ -57,13 +57,15 @@ orp :: PParser Expr
 orp = operatorp [";"] andp
 
 andp :: PParser Expr
-andp = operatorp [","] unifyp
+andp = operatorp [","] firstp
+
+firstp = unifyp
 
 unifyp :: PParser Expr
 unifyp = operatorp ["="] simplep
 
 simplep :: PParser Expr
-simplep = varp <|> callp <|> (acceptL ["("] *> orp <* acceptL [")"])
+simplep = varp <|> callp <|> listp <|> (acceptL ["("] *> orp <* acceptL [")"])
 
 varp :: PParser Expr
 varp = do t <- peekToken
@@ -79,11 +81,24 @@ varp = do t <- peekToken
 
 callp :: PParser Expr
 callp = do name <- identifierL
-           acceptL ["("]
            args <- (
-               ((:) <$> simplep <*> many (acceptL [","] *> simplep)) <* acceptL [")"]
-             ) <|> (acceptL [")"] *> pure [])
+               acceptL ["("] *> ((:) <$> firstp <*> many (acceptL [","] *> firstp)) <* acceptL [")"]
+             ) <|> (acceptL["("] *> acceptL [")"] *> pure []) <|> pure []
            return $ Compound name args
+
+listp :: PParser Expr
+listp = emptylistp <|> nonemptylistp
+
+emptylistp :: PParser Expr
+emptylistp = acceptL ["["] *> acceptL ["]"] *> pure (Compound "[]" [])
+
+nonemptylistp :: PParser Expr
+nonemptylistp = do acceptL ["["]
+                   item <- firstp
+                   items <- many (acceptL [","] *> firstp)
+                   tail <- (acceptL ["|"] *> firstp) <|> (pure (Compound "[]" []))
+                   acceptL ["]"]
+                   return $ foldr (\a b -> Compound "." [a, b]) tail (item:items)
 
 -- Lexer and parser interface
 

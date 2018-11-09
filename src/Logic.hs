@@ -15,11 +15,17 @@ data Expr = Variable Int
 
 instance Show Expr where
   show (Variable v) = "_" ++ show v
+  show (Compound "." [h, t]) = "[" ++ showExprList h t ++ "]"
   show (Compound f []) = f
   show (Compound f [a, b])
     | all (not . isAlphaNum) f = "(" ++ show a ++ " " ++ f ++ " " ++ show b ++ ")"
     | otherwise                = f ++ "(" ++ show a ++ ", " ++ show b ++ ")"
   show (Compound f as) = f ++ "(" ++ intercalate ", " (map show as) ++ ")"
+
+showExprList :: Expr -> Expr -> String
+showExprList h (Compound "[]" [])      = show h
+showExprList h (Compound "." [h', t']) = show h ++ "," ++ showExprList h' t'
+showExprList h t                       = show h ++ "|" ++ show t
 
 -- State
 
