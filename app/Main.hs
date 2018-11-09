@@ -23,7 +23,9 @@ queryLoop :: M.Map (String, Int) [(Expr, Expr)] -> IO ()
 queryLoop fs = do putStr "?- "
                   hFlush stdout
                   query <- getLine
-                  case parseExpression query of
+                  if null query
+                   then queryLoop fs
+                   else case parseExpression query of
                     Left error -> print error >> exitFailure
                     Right expr -> do let vars = map (Variable.(1+)) . nub $ searchVars [] expr
                                      let goal = eval fs [] expr
