@@ -126,6 +126,7 @@ eval' fs _  (Variable _)          = error "expected predicate"
 eval' fs vs (Compound ";" [a, b]) = disj (eval' fs vs a) (eval' fs vs b)
 eval' fs vs (Compound "," [a, b]) = conj (eval' fs vs a) (eval' fs vs b)
 eval' fs vs (Compound "=" [a, b]) = unify (evalExpr vs a) (evalExpr vs b)
+eval' fs vs (Compound "\\+" [e])  = \state -> if null (eval' fs vs e state) then [state] else []
 eval' fs vs e@(Compound f   args) = case M.lookup (f, length args) fs of
                                       Just clauses -> evalPredicate fs (evalExpr vs e) clauses
                                       Nothing -> error ("undefined predicate "++f++"/"++show (length args))
