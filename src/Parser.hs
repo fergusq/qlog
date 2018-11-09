@@ -80,7 +80,7 @@ termp :: PParser Expr
 termp = operatorp ["*", "/", "%"] simplep
 
 simplep :: PParser Expr
-simplep = intp <|> varp <|> callp <|> listp <|> negp <|> parp
+simplep = intp <|> varp <|> anonVarp <|> callp <|> listp <|> negp <|> parp
 
 intp :: PParser Expr
 intp = do s <- nextToken
@@ -99,6 +99,16 @@ varp = do t <- peekToken
             Nothing -> do let i = length vars
                           lift $ put (M.insert s i vars)
                           return $ Variable i
+
+anonVarp :: PParser Expr
+anonVarp = do t <- peekToken
+              s@(c:cs) <- nextL
+              unless (c == '_') $
+                parsingError t "unused variable"
+              vars <- lift get
+              let i = length vars
+              lift $ put (M.insert s i vars)
+              return $ Variable i
 
 callp :: PParser Expr
 callp = do name <- identifierL
