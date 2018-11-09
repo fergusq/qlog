@@ -16,6 +16,9 @@ prelex :: String -> [LNToken Char]
 prelex s = prelex' s 1 1
 
 prelex' []        _ _ = []
+prelex' ('%' :cs) l k = prelex' cs' l k' where comment = takeWhile (/='\n') cs
+                                               cs' = drop (length comment) cs
+                                               k' = k + length comment
 prelex' ('\n':cs) l k = LNToken '\n' l k : prelex' cs (l+1) 1
 prelex' (c   :cs) l k = LNToken c    l k : prelex' cs l     (k+1)
 
@@ -27,7 +30,10 @@ tokenp :: TParser (LNToken String)
 tokenp = lnToken (some (oneOfL "0123456789"))
          <|> identifier
          <|> acceptL ":-"
-         <|> (((:"")<$>) <$> oneOfL "()[]{}<>.,;=|")
+         <|> acceptL "->"
+         <|> acceptL "\\+"
+         <|> acceptL "\\="
+         <|> (((:"")<$>) <$> oneOfL "()[]{}<>.,;=|+-*/")
 
 tokensp :: String -> TParser [LNToken String]
 tokensp eof = many (many space *> tokenp) <* many space <* acceptL eof
@@ -40,7 +46,7 @@ programp :: [String] -> PParser [((String, Int), (Expr, Expr))]
 programp eof = some factp <* acceptL eof
 
 factp :: PParser ((String, Int), (Expr, Expr))
-factp = do head@(Compound name params) <- callp
+factp = do head@(Compound name params) <- callp <|> parp
            acceptL [":-"]
            body <- orp
            acceptL ["."]
@@ -59,13 +65,22 @@ orp = operatorp [";"] andp
 andp :: PParser Expr
 andp = operatorp [","] firstp
 
-firstp = unifyp
+firstp = impliesp
+
+impliesp :: PParser Expr
+impliesp = operatorp ["->"] unifyp
 
 unifyp :: PParser Expr
-unifyp = operatorp ["="] simplep
+unifyp = operatorp ["on", "=", "\\=", "<", ">", "<=", ">="] sump
+
+sump :: PParser Expr
+sump = operatorp ["+", "-"] termp
+
+termp :: PParser Expr
+termp = operatorp ["*", "/"] simplep
 
 simplep :: PParser Expr
-simplep = varp <|> callp <|> listp <|> (acceptL ["("] *> orp <* acceptL [")"])
+simplep = varp <|> callp <|> listp <|> negp <|> parp
 
 varp :: PParser Expr
 varp = do t <- peekToken
@@ -99,6 +114,14 @@ nonemptylistp = do acceptL ["["]
                    tail <- (acceptL ["|"] *> firstp) <|> (pure (Compound "[]" []))
                    acceptL ["]"]
                    return $ foldr (\a b -> Compound "." [a, b]) tail (item:items)
+
+negp :: PParser Expr
+negp = do acceptL ["\\+"]
+          e <- simplep
+          return $ Compound "\\+" [e]
+
+parp :: PParser Expr
+parp = acceptL ["("] *> orp <* acceptL [")"]
 
 -- Lexer and parser interface
 
