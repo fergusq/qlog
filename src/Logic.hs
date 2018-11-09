@@ -11,6 +11,7 @@ import Debug.Trace
 
 data Expr = Variable Int
           | Compound String [Expr]
+          | SymbolInt Integer
           deriving (Eq)
 
 instance Show Expr where
@@ -21,6 +22,7 @@ instance Show Expr where
     | all (not . isAlphaNum) f = "(" ++ show a ++ " " ++ f ++ " " ++ show b ++ ")"
     | otherwise                = f ++ "(" ++ show a ++ ", " ++ show b ++ ")"
   show (Compound f as) = f ++ "(" ++ intercalate ", " (map show as) ++ ")"
+  show (SymbolInt i) = show i
 
 showExprList :: Expr -> Expr -> String
 showExprList h (Compound "[]" [])      = show h
@@ -119,17 +121,20 @@ searchVars ps (Variable i)
   | i `elem` ps = []
   | otherwise   = [i]
 searchVars ps (Compound f as) = concatMap (searchVars ps) as
+searchVars _  (SymbolInt _) = []
 
 eval' :: M.Map (String, Int) [(Expr, Expr)] -> [(Int, Expr)] -> Expr -> Goal
 --eval' fs vs e | trace ("' fs="++show fs++" vs="++show vs++" e="++show e) False = undefined
-eval' fs _  (Variable _)          = error "expected predicate"
-eval' fs vs (Compound ";" [a, b]) = disj (eval' fs vs a) (eval' fs vs b)
-eval' fs vs (Compound "," [a, b]) = conj (eval' fs vs a) (eval' fs vs b)
-eval' fs vs (Compound "=" [a, b]) = unify (evalExpr vs a) (evalExpr vs b)
-eval' fs vs (Compound "\\+" [e])  = \state -> if null (eval' fs vs e state) then [state] else []
-eval' fs vs e@(Compound f   args) = case M.lookup (f, length args) fs of
-                                      Just clauses -> evalPredicate fs (evalExpr vs e) clauses
-                                      Nothing -> error ("undefined predicate "++f++"/"++show (length args))
+eval' fs _  (Variable _)           = error "odotettiin funktoria"
+eval' fs _  (SymbolInt _)          = error "odotettiin funktoria"
+eval' fs vs (Compound ";" [a, b])  = disj (eval' fs vs a) (eval' fs vs b)
+eval' fs vs (Compound "," [a, b])  = conj (eval' fs vs a) (eval' fs vs b)
+eval' fs vs (Compound "=" [a, b])  = unify (evalExpr vs a) (evalExpr vs b)
+eval' fs vs (Compound "\\+" [e])   = \state -> if null (eval' fs vs e state) then [state] else []
+eval' fs vs (Compound "on" [a, b]) = \state -> unify (evalExpr vs a) (evalMath state (evalExpr vs b)) state
+eval' fs vs e@(Compound f   args)  = case M.lookup (f, length args) fs of
+                                       Just clauses -> evalPredicate fs (evalExpr vs e) clauses
+                                       Nothing -> error ("määrittelemätön funktori "++f++"/"++show (length args))
 
 evalPredicate :: M.Map (String, Int) [(Expr, Expr)] -> Expr -> [(Expr, Expr)] -> Goal
 evalPredicate _  pred []     = const []
@@ -141,5 +146,18 @@ evalPredicate' fs pred (head, body)
   where vs = nub $ searchVars [] head
 
 evalExpr :: [(Int, Expr)] -> Expr -> Expr
-evalExpr vs (Variable v)    = fromMaybe (error "undefined variable") $ lookup v vs
+evalExpr vs (Variable v)    = fromMaybe (error "määrittelemätön muuttuja") $ lookup v vs
 evalExpr vs (Compound f es) = Compound f (map (evalExpr vs) es)
+evalExpr _  e               = e
+
+evalMath :: Substitutions -> Expr -> Expr
+evalMath state e = case walk state e of
+                     t@(Compound f as) -> case (f, map (evalMath state) as) of
+                                            ("+", [SymbolInt i, SymbolInt j]) -> SymbolInt (i+j)
+                                            ("-", [SymbolInt i, SymbolInt j]) -> SymbolInt (i-j)
+                                            ("*", [SymbolInt i, SymbolInt j]) -> SymbolInt (i*j)
+                                            ("/", [SymbolInt i, SymbolInt j]) -> SymbolInt (i `div` j)
+                                            ("%", [SymbolInt i, SymbolInt j]) -> SymbolInt (i `mod` j)
+                                            _ -> t
+                     (Variable _) -> error "sitomaton muuttuja"
+                     t -> t

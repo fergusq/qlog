@@ -33,7 +33,7 @@ tokenp = lnToken (some (oneOfL "0123456789"))
          <|> acceptL "->"
          <|> acceptL "\\+"
          <|> acceptL "\\="
-         <|> (((:"")<$>) <$> oneOfL "()[]{}<>.,;=|+-*/")
+         <|> (((:"")<$>) <$> oneOfL "()[]{}<>.,;=|+-*/%")
 
 tokensp :: String -> TParser [LNToken String]
 tokensp eof = many (many space *> tokenp) <* many space <* acceptL eof
@@ -77,10 +77,16 @@ sump :: PParser Expr
 sump = operatorp ["+", "-"] termp
 
 termp :: PParser Expr
-termp = operatorp ["*", "/"] simplep
+termp = operatorp ["*", "/", "%"] simplep
 
 simplep :: PParser Expr
-simplep = varp <|> callp <|> listp <|> negp <|> parp
+simplep = intp <|> varp <|> callp <|> listp <|> negp <|> parp
+
+intp :: PParser Expr
+intp = do s <- nextToken
+          unless (all (`elem` "0123456789") (content s)) $
+            parsingError s "int token"
+          return . SymbolInt . read $ content s
 
 varp :: PParser Expr
 varp = do t <- peekToken
