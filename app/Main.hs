@@ -1,7 +1,10 @@
 module Main where
 
 import Control.Monad
+
+import Data.List
 import qualified Data.Map as M
+
 import System.Environment
 import System.Exit
 import System.IO
@@ -22,7 +25,7 @@ queryLoop fs = do putStr "?- "
                   query <- getLine
                   case parseExpression query of
                     Left error -> print error >> exitFailure
-                    Right expr -> do let vars = map (Variable.(1+)) $ searchVars [] expr
+                    Right expr -> do let vars = map (Variable.(1+)) . nub $ searchVars [] expr
                                      let goal = eval fs [] expr
                                      output vars $ goal (Substitutions {substitutions=M.empty, counter=0})
                                      queryLoop fs
