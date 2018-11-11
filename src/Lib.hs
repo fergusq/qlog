@@ -7,11 +7,11 @@ import Logic
 import Parser
 import ParserCombinators
 
-compileFacts :: String -> Either [ParsingError] (M.Map (String, Int) [(Expr, Expr)])
-compileFacts code = do facts <- parseFacts code
-                       return $ compileFacts' M.empty facts
+compileClauses :: String -> Either [ParsingError] (M.Map (String, Int) [(Expr, Expr)])
+compileClauses code = do clauses <- parseClauses code
+                         return $ compileClauses' M.empty clauses
 
-compileFacts' factMap []                     = factMap
-compileFacts' factMap ((signature, fact):as) = let facts = fromMaybe [] $ M.lookup signature factMap
-                                                   factMap' = M.insert signature (facts++[fact]) factMap
-                                               in compileFacts' factMap' as
+compileClauses' clauseMap []                       = clauseMap
+compileClauses' clauseMap ((signature, clause):as) = let clauses = fromMaybe [] $ M.lookup signature clauseMap
+                                                         clauseMap' = M.insert signature (clauses++[clause]) clauseMap
+                                                     in compileClauses' clauseMap' as

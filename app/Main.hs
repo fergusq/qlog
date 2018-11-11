@@ -9,13 +9,15 @@ import System.Environment
 import System.Exit
 import System.IO
 
+import qualified ListT as L
+
 import Lib
 import Logic
 import Parser
 
 main :: IO ()
 main = do [code] <- getArgs
-          case compileFacts code of
+          case compileClauses code of
             Left error -> print error >> exitFailure
             Right fs -> do queryLoop fs
 
@@ -29,7 +31,8 @@ queryLoop fs = do putStr "?- "
                     Left error -> print error >> exitFailure
                     Right expr -> do let vars = map (Variable.(1+)) . nub $ searchVars [] expr
                                      let goal = eval fs [] expr
-                                     output vars $ goal (Substitutions {substitutions=M.empty, counter=0})
+                                     results <- L.toList $ goal (Substitutions {substitutions=M.empty, counter=0})
+                                     output vars results
                                      queryLoop fs
 
 output :: [Expr] -> [Substitutions] -> IO ()

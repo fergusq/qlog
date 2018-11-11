@@ -1,9 +1,12 @@
 module Logic where
 import Control.Applicative
+import Control.Monad.Trans.Class (lift)
 import Data.Char (isAlphaNum)
 import Data.List
 import Data.Maybe
 import qualified Data.Map as M
+
+import qualified ListT as L
 
 import Debug.Trace
 
@@ -44,7 +47,7 @@ substitute v r (Compound f as) = Compound f $ map (substitute v r) as
 
 -- Goal
 
-type Goal = Substitutions -> [Substitutions]
+type Goal = Substitutions -> L.ListT IO Substitutions
 
 walk :: Substitutions -> Expr -> Expr
 walk state x@(Variable v) = fromMaybe x $ walk state <$> M.lookup v (substitutions state)
@@ -61,18 +64,18 @@ unify :: Expr -> Expr -> Goal
 unify a b state = let a' = walk state a
                       b' = walk state b
                   in if a' == b'
-                       then [state]
+                       then pure state
                        else case (a', b') of
-                              ((Variable v), _) -> [addSubstitution v b state]
-                              (_, (Variable v)) -> [addSubstitution v a state]
+                              ((Variable v), _) -> pure $ addSubstitution v b state
+                              (_, (Variable v)) -> pure $ addSubstitution v a state
                               (Compound v xs, Compound u ys) -> if v == u
                                                                   then unifyAll xs ys state
-                                                                  else []
-                              (_, _) -> []
+                                                                  else empty
+                              (_, _) -> empty
 
-unifyAll []    [] s = [s]
-unifyAll (_:_) [] _ = []
-unifyAll [] (_:_) _ = []
+unifyAll []    [] s = pure s
+unifyAll (_:_) [] _ = empty
+unifyAll [] (_:_) _ = empty
 unifyAll (x:xs) (y:ys) state = unify x y state >>= unifyAll xs ys
 
 -- Conjunction and disjunction
@@ -96,10 +99,10 @@ infixl 3 #&#
 -- True and false
 
 true :: Goal
-true state = [state]
+true state = pure state
 
 false :: Goal
-false _state = []
+false _state = empty
 
 -- callFresh and fresh
 
@@ -119,8 +122,7 @@ fresh' n es f = callFresh $ \e -> fresh' (n-1) (e:es) f
 
 eval :: M.Map (String, Int) [(Expr, Expr)] -> [(Int, Expr)] -> Expr -> Goal
 eval fs hvs e
-  | null is   = eval' fs hvs $ evalExpr hvs e
-  | otherwise = fresh (length is) $ \is' -> let vs = hvs ++ zip is is' in eval' fs vs $ evalExpr vs e
+  = fresh (length is) $ \is' -> let vs = hvs ++ zip is is' in eval' fs vs $ evalExpr vs e
   where is = nub $ searchVars (map fst hvs) e
 
 searchVars :: [Int] -> Expr -> [Int]
@@ -141,18 +143,19 @@ eval' fs _  (SymbolInt _)                 = error "odotettiin funktoria"
 eval' fs vs (Compound ";" [a, b])         = disj (eval' fs vs a) (eval' fs vs b)
 eval' fs vs (Compound "," [a, b])         = conj (eval' fs vs a) (eval' fs vs b)
 eval' fs vs (Compound "=" [a, b])         = unify a b
-eval' fs vs (Compound "\\+" [e])          = \state -> if null (eval' fs vs e state) then [state] else []
+eval' fs vs (Compound "\\+" [e])          = \state -> lift (L.null (eval' fs vs e state)) >>= \c -> if c then pure state else empty
 eval' fs vs (Compound "tosi" [])          = true
 eval' fs vs (Compound "epätosi" [])       = false
 eval' fs vs (Compound "on" [a, b])        = \state -> unify a (evalMath state b) state
-eval' fs vs (Compound "muuttuja" [e])     = \state -> case walk state e of { (Variable _) -> [state]; _ -> [] }
-eval' fs vs (Compound "kokonaisluku" [e]) = \state -> case walk state e of { (SymbolInt _) -> [state]; _ -> [] }
+eval' fs vs (Compound "muuttuja" [e])     = \state -> case walk state e of { (Variable _) -> pure state; _ -> empty }
+eval' fs vs (Compound "kokonaisluku" [e]) = \state -> case walk state e of { (SymbolInt _) -> pure state; _ -> empty }
 eval' fs vs (Compound "<" [a, b])         = \state -> case map (walk state) [a, b] of
-                                                        [SymbolInt i, SymbolInt j] -> if i < j then [state] else []
-                                                        [Variable i, SymbolInt j] -> map (flip (addSubstitution i) state . SymbolInt) [j-1,j-2..]
-                                                        [SymbolInt i, Variable j] -> map (flip (addSubstitution j) state . SymbolInt) [i+1,i+2..]
-                                                        [Variable i, Variable j] -> map (\x -> addSubstitution j (SymbolInt x) $ addSubstitution i (SymbolInt 0) state) [1..]
-                                                        _ -> []
+                                                        [SymbolInt i, SymbolInt j] -> if i < j then pure state else empty
+                                                        [Variable i, SymbolInt j] -> L.fromFoldable $ map (flip (addSubstitution i) state . SymbolInt) [j-1,j-2..]
+                                                        [SymbolInt i, Variable j] -> L.fromFoldable $ map (flip (addSubstitution j) state . SymbolInt) [i+1,i+2..]
+                                                        [Variable i, Variable j] -> L.fromFoldable $ map (\x -> addSubstitution j (SymbolInt x) $
+                                                                                                                addSubstitution i (SymbolInt 0) state) [1..]
+                                                        _ -> empty
 eval' fs vs (Compound ">" [a, b])         = eval' fs vs (Compound "<" [b, a])
 eval' fs vs (Compound "<=" [a, b])        = disj (unify a b) (eval' fs vs (Compound "<" [a, b]))
 eval' fs vs (Compound ">=" [a, b])        = eval' fs vs (Compound "<=" [b, a])
@@ -160,20 +163,20 @@ eval' fs vs (Compound "klasuuli" [h, b])  = \state -> let e = walk state h
                                                       in case e of
                                                            (Compound f args) -> case M.lookup (f, length args) fs of
                                                                                   Just clauses -> unifyClauses e b clauses state
-                                                                                  Nothing -> []
+                                                                                  Nothing -> empty
                                                            (Variable _) -> unifyClauses e b (concat $ M.elems fs) state
-                                                           _ -> []
+                                                           _ -> empty
+eval' fs vs (Compound "näytä" [e])        = \state -> lift (print $ deepWalk state e) >> true state
 eval' fs vs e@(Compound f   args)         = case M.lookup (f, length args) fs of
                                               Just clauses -> evalPredicate fs e clauses
                                               Nothing -> error ("määrittelemätön funktori "++f++"/"++show (length args))
 
 evalPredicate :: M.Map (String, Int) [(Expr, Expr)] -> Expr -> [(Expr, Expr)] -> Goal
-evalPredicate _  _    [] = const []
+evalPredicate _  _    [] = const empty
 evalPredicate fs pred cs = foldr1 disj $ map (evalPredicate' fs pred) cs
 
 evalPredicate' fs pred (head, body)
-  | null is   = conj (unify pred head) $ eval fs [] body
-  | otherwise = fresh (length is) $ \is' -> let vs = zip is is' in conj (unify pred (evalExpr vs head)) $ eval fs vs body
+  = fresh (length is) $ \is' -> let vs = zip is is' in conj (unify pred (evalExpr vs head)) $ eval fs vs body
   where is = nub $ searchVars [] head
 
 evalExpr :: [(Int, Expr)] -> Expr -> Expr
@@ -194,11 +197,10 @@ evalMath state e = case walk state e of
                      t -> t
 
 unifyClauses :: Expr -> Expr -> [(Expr, Expr)] -> Goal
-unifyClauses _ _ [] = const []
+unifyClauses _ _ [] = const empty
 unifyClauses h b cs = foldr1 disj $ map (unifyClause h b) cs
 
 unifyClause :: Expr -> Expr -> (Expr, Expr) -> Goal
 unifyClause head body (chead, cbody)
-  | null is   = conj (unify head chead) (unify body cbody)
-  | otherwise = fresh (length is) $ \is' -> let vs = zip is is' in conj (unify head (evalExpr vs chead)) (unify body (evalExpr vs cbody))
+  = fresh (length is) $ \is' -> let vs = zip is is' in conj (unify head (evalExpr vs chead)) (unify body (evalExpr vs cbody))
   where is = nub $ searchVars [] chead ++ searchVars [] cbody

@@ -45,13 +45,13 @@ tokensp eof = many (many space *> tokenp) <* many space <* acceptL eof
 type PParser r = ParserT (LNToken String) (State (M.Map String Int)) r
 
 programp :: [String] -> PParser [((String, Int), (Expr, Expr))]
-programp eof = some factp <* acceptL eof
+programp eof = some clausep <* acceptL eof
 
-factp :: PParser ((String, Int), (Expr, Expr))
-factp = do head@(Compound name params) <- callp <|> parp
-           body <- (acceptL [":-"] *> orp) <|> pure (Compound "tosi" [])
-           acceptL ["."]
-           return ((name, length params), (head, body))
+clausep :: PParser ((String, Int), (Expr, Expr))
+clausep = do head@(Compound name params) <- callp <|> parp
+             body <- (acceptL [":-"] *> orp) <|> pure (Compound "tosi" [])
+             acceptL ["."]
+             return ((name, length params), (head, body))
 
 operatorp :: [String] -> PParser Expr -> PParser Expr
 operatorp ops subp = do e <- subp
@@ -61,7 +61,7 @@ operatorp ops subp = do e <- subp
                         return $ foldl (\a (op, b) -> Compound op [a, b]) e es
 
 hornp :: PParser Expr
-hornp = operatorp [":-"] andp
+hornp = operatorp [":-"] orp
 
 orp :: PParser Expr
 orp = operatorp [";"] andp
@@ -154,9 +154,9 @@ parseExpression :: String -> Either [ParsingError] Expr
 parseExpression code = do tokens <- lexCode code
                           fst $ runState (parse (hornp <* acceptL [pEofStr]) (tokens++[pEof])) M.empty
 
-parseFacts :: String -> Either [ParsingError] [((String, Int), (Expr, Expr))]
-parseFacts code = do tokens <- lexCode code
-                     fst $ runState (parse (programp [pEofStr]) (tokens++[pEof])) M.empty
+parseClauses :: String -> Either [ParsingError] [((String, Int), (Expr, Expr))]
+parseClauses code = do tokens <- lexCode code
+                       fst $ runState (parse (programp [pEofStr]) (tokens++[pEof])) M.empty
 
 pEofStr = "<EOF>"
 pEof = LNToken pEofStr 0 0
