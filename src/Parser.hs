@@ -33,6 +33,8 @@ tokenp = lnToken (some (oneOfL "0123456789"))
          <|> acceptL "->"
          <|> acceptL "\\+"
          <|> acceptL "\\="
+         <|> acceptL "<="
+         <|> acceptL ">="
          <|> (((:"")<$>) <$> oneOfL "()[]{}<>.,;=|+-*/%")
 
 tokensp :: String -> TParser [LNToken String]
@@ -47,8 +49,7 @@ programp eof = some factp <* acceptL eof
 
 factp :: PParser ((String, Int), (Expr, Expr))
 factp = do head@(Compound name params) <- callp <|> parp
-           acceptL [":-"]
-           body <- orp
+           body <- (acceptL [":-"] *> orp) <|> pure (Compound "tosi" [])
            acceptL ["."]
            return ((name, length params), (head, body))
 
@@ -58,6 +59,9 @@ operatorp ops subp = do e <- subp
                                        e' <- subp
                                        return (content op, e'))
                         return $ foldl (\a (op, b) -> Compound op [a, b]) e es
+
+hornp :: PParser Expr
+hornp = operatorp [":-"] andp
 
 orp :: PParser Expr
 orp = operatorp [";"] andp
@@ -137,7 +141,7 @@ negp = do acceptL ["\\+"]
           return $ Compound "\\+" [e]
 
 parp :: PParser Expr
-parp = acceptL ["("] *> orp <* acceptL [")"]
+parp = acceptL ["("] *> hornp <* acceptL [")"]
 
 -- Lexer and parser interface
 
@@ -148,7 +152,7 @@ lexCode code = runIdentity $ parse (tokensp [tEofChar]) (prelex $ code++[tEofCha
 
 parseExpression :: String -> Either [ParsingError] Expr
 parseExpression code = do tokens <- lexCode code
-                          fst $ runState (parse (orp <* acceptL [pEofStr]) (tokens++[pEof])) M.empty
+                          fst $ runState (parse (hornp <* acceptL [pEofStr]) (tokens++[pEof])) M.empty
 
 parseFacts :: String -> Either [ParsingError] [((String, Int), (Expr, Expr))]
 parseFacts code = do tokens <- lexCode code
