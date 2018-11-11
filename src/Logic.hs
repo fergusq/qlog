@@ -1,7 +1,7 @@
 module Logic where
 import Control.Applicative
 import Control.Monad.Trans.Class (lift)
-import Data.Char (isAlphaNum)
+import Data.Char (isAlphaNum, chr)
 import Data.List
 import Data.Maybe
 import qualified Data.Map as M
@@ -31,6 +31,14 @@ showExprList :: Expr -> Expr -> String
 showExprList h (Compound "[]" [])      = show h
 showExprList h (Compound "." [h', t']) = show h ++ "," ++ showExprList h' t'
 showExprList h t                       = show h ++ "|" ++ show t
+
+exprToStr :: Expr -> String
+exprToStr e = fromMaybe ('(' : show e ++ ")") $ strExprToStr e
+
+strExprToStr :: Expr -> Maybe String
+strExprToStr (Compound "." [SymbolInt i, tail]) = strExprToStr tail >>= Just . (chr (fromInteger i) :)
+strExprToStr (Compound "[]" []) = Just ""
+strExprToStr _ = Nothing
 
 -- State
 
@@ -159,14 +167,16 @@ eval' fs vs (Compound "<" [a, b])         = \state -> case map (walk state) [a, 
 eval' fs vs (Compound ">" [a, b])         = eval' fs vs (Compound "<" [b, a])
 eval' fs vs (Compound "<=" [a, b])        = disj (unify a b) (eval' fs vs (Compound "<" [a, b]))
 eval' fs vs (Compound ">=" [a, b])        = eval' fs vs (Compound "<=" [b, a])
-eval' fs vs (Compound "klasuuli" [h, b])  = \state -> let e = walk state h
+eval' fs vs (Compound "klausuuli" [h, b]) = \state -> let e = walk state h
                                                       in case e of
                                                            (Compound f args) -> case M.lookup (f, length args) fs of
                                                                                   Just clauses -> unifyClauses e b clauses state
                                                                                   Nothing -> empty
                                                            (Variable _) -> unifyClauses e b (concat $ M.elems fs) state
                                                            _ -> empty
-eval' fs vs (Compound "näytä" [e])        = \state -> lift (print $ deepWalk state e) >> true state
+eval' fs vs (Compound "näytä" [e])        = \state -> lift (putStr . show $ deepWalk state e) >> true state
+eval' fs vs (Compound "tulosta" [e])      = \state -> lift (putStr . exprToStr $ deepWalk state e) >> true state
+eval' fs vs (Compound "uusirivi" [])      = \state -> lift (putStr "\n") >> true state
 eval' fs vs e@(Compound f   args)         = case M.lookup (f, length args) fs of
                                               Just clauses -> evalPredicate fs e clauses
                                               Nothing -> error ("määrittelemätön funktori "++f++"/"++show (length args))

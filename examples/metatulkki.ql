@@ -4,7 +4,7 @@ mt1(A = B) :-
 mt1((A, B)) :-
 	mt1(A), mt1(B).
 mt1(F) :-
-	klasuuli(F, Vartalo),
+	klausuuli(F, Vartalo),
 	mt1(Vartalo).
 
 syy(tosi, []).
@@ -15,17 +15,21 @@ syy((A, B), Todistus) :-
 	syy(B, TodistusB),
 	lisää(TodistusA, TodistusB, Todistus).
 syy(F, Todistus) :-
-	klasuuli(F, Vartalo),
+	klausuuli(F, Vartalo),
 	syy(Vartalo, TodistusF),
-	Todistus = [(F :- Vartalo) | TodistusF].
+	Todistus = [Vartalo | TodistusF].
 
 miksi(Lause) :-
 	syy(Lause, Todistus),
+	näytä(Lause),
+	tulosta(", koska:"),
+	uusirivi,
 	näytä_lista(Todistus).
 
 näytä_lista([]).
 näytä_lista([A|L]) :-
 	näytä(A),
+	uusirivi,
 	näytä_lista(L).
 
 lisää([A], X, [A|X]).

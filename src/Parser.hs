@@ -35,7 +35,13 @@ tokenp = lnToken (some (oneOfL "0123456789"))
          <|> acceptL "\\="
          <|> acceptL "<="
          <|> acceptL ">="
+         <|> quotep
          <|> (((:"")<$>) <$> oneOfL "()[]{}<>.,;=|+-*/%")
+
+quotep :: TParser (LNToken String)
+quotep = acceptL "\"" *> (
+           (('"':)<$>) <$> lnToken (many $ (noneOfL "\\\"" <|> (oneOfL "\\" *> oneOfL "\"\\")))
+         ) <* acceptL "\""
 
 tokensp :: String -> TParser [LNToken String]
 tokensp eof = many (many space *> tokenp) <* many space <* acceptL eof
@@ -84,7 +90,7 @@ termp :: PParser Expr
 termp = operatorp ["*", "/", "%"] simplep
 
 simplep :: PParser Expr
-simplep = intp <|> varp <|> anonVarp <|> callp <|> listp <|> negp <|> parp
+simplep = intp <|> varp <|> anonVarp <|> callp <|> listp <|> stringp <|> negp <|> parp
 
 intp :: PParser Expr
 intp = do s <- nextToken
@@ -134,6 +140,13 @@ nonemptylistp = do acceptL ["["]
                    tail <- (acceptL ["|"] *> firstp) <|> (pure (Compound "[]" []))
                    acceptL ["]"]
                    return $ foldr (\a b -> Compound "." [a, b]) tail (item:items)
+
+stringp :: PParser Expr
+stringp = do s <- nextToken
+             unless ((content s !! 0) == '\"') $
+               parsingError s "string token"
+             let str = drop 1 (content s)
+             return $ foldr (\a b -> Compound "." [a, b]) (Compound "[]" []) $ map (SymbolInt . toInteger . ord) str
 
 negp :: PParser Expr
 negp = do acceptL ["\\+"]
