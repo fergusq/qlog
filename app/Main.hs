@@ -39,7 +39,7 @@ output vars states = putStrLn "Kyllä." >> output' vars states
 output' :: [Expr] -> [Substitutions] -> IO ()
 output' vars [] = putStrLn "."
 output' vars (state@Substitutions { substitutions = ss }:n)
-  = do forM_ (zip vars ['X', 'Y', 'Z']) $ \(e, v) ->
+  = do forM_ (zip (reverse vars) ['X', 'Y', 'Z']) $ \(e, v) ->
          putStrLn $ (v:" = ") ++ show (deepWalk state e)
        unless (null n) $ do
          line <- getLine
