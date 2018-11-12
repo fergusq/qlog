@@ -17,7 +17,7 @@ import Parser
 
 main :: IO ()
 main = do [code] <- getArgs
-          case compileClauses code of
+          case compileClauses M.empty code of
             Left error -> print error >> exitFailure
             Right fs -> do queryLoop fs
 

@@ -7,9 +7,9 @@ import Logic
 import Parser
 import ParserCombinators
 
-compileClauses :: String -> Either [ParsingError] (M.Map (String, Int) [(Expr, Expr)])
-compileClauses code = do clauses <- parseClauses code
-                         return $ compileClauses' M.empty clauses
+compileClauses :: M.Map (String, Int) [Clause] -> String -> Either [ParsingError] (M.Map (String, Int) [Clause])
+compileClauses clauseMap code = do clauses <- parseClauses code
+                                   return $ compileClauses' clauseMap clauses
 
 compileClauses' clauseMap []                       = clauseMap
 compileClauses' clauseMap ((signature, clause):as) = let clauses = fromMaybe [] $ M.lookup signature clauseMap

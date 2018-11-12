@@ -1,7 +1,4 @@
-peano(nolla, 0).
-peano(s(P), X) :- peano(P, Y), X on Y+1.
-
-pituus(L, P) :- muuttuja(P), \+ muuttuja(L), pituus_m(L, P); (\+ muuttuja(P); muuttuja(L)), pituus_k(L, P).
+pituus(L, P) :- muuttuja(P), \+ muuttuja(L), pituus_m(L, P) !; pituus_k(L, P).
 
 pituus_m([], 0).
 pituus_m([_|H], P) :- pituus_m(H, Z), P on Z+1.

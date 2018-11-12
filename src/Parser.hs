@@ -31,10 +31,12 @@ tokenp = lnToken (some (oneOfL "0123456789"))
          <|> identifier
          <|> acceptL ":-"
          <|> acceptL "->"
+         <|> acceptL "-->"
          <|> acceptL "\\+"
          <|> acceptL "\\="
          <|> acceptL "<="
          <|> acceptL ">="
+         <|> acceptL "!;"
          <|> quotep
          <|> (((:"")<$>) <$> oneOfL "()[]{}<>.,;=|+-*/%")
 
@@ -50,14 +52,48 @@ tokensp eof = many (many space *> tokenp) <* many space <* acceptL eof
 
 type PParser r = ParserT (LNToken String) (State (M.Map String Int)) r
 
-programp :: [String] -> PParser [((String, Int), (Expr, Expr))]
-programp eof = some clausep <* acceptL eof
+programp :: [String] -> PParser [((String, Int), Clause)]
+programp eof = some (clausep <|> dcgp) <* acceptL eof
 
-clausep :: PParser ((String, Int), (Expr, Expr))
+clausep :: PParser ((String, Int), Clause)
 clausep = do head@(Compound name params) <- callp <|> parp
              body <- (acceptL [":-"] *> orp) <|> pure (Compound "tosi" [])
              acceptL ["."]
              return ((name, length params), (head, body))
+
+dcgp :: PParser ((String, Int), Clause)
+dcgp = do head@(Compound name params) <- callp <|> parp
+          acceptL ["-->"]
+          start <- newVar Nothing
+          end <- newVar Nothing
+          let head' = Compound name (params ++ [start, end])
+          body <- dcgBodyp
+          return $ ((name, length params + 2), (head', body start end))
+
+dcgBodyp :: PParser (Expr -> Expr -> Expr)
+dcgBodyp = (acceptL ["."] *> pure (\_ _ -> Compound "tosi" []))
+           <|> do f1 <- dcgCallp <|> dcgListp
+                  (do acceptL [","]
+                      f2 <- dcgBodyp
+                      var <- newVar Nothing
+                      return $ \start end -> Compound "," [f1 start var, f2 var end]
+                      ) <|> (acceptL ["."] *> pure f1)
+
+dcgCallp = do head@(Compound name params) <- callp <|> parp
+              return $ \start end -> Compound name (params ++ [start, end])
+
+dcgListp = do t <- peekToken
+              list <- listp <|> stringp
+              checkList t list
+              return $ \start end -> Compound "=" [start, addTail end list]
+
+checkList _ (Compound "[]" []) = return ()
+checkList t (Compound "." [_, b]) = checkList t b
+checkList t _ = parsingError t "proper list"
+
+addTail :: Expr -> Expr -> Expr
+addTail end (Compound "[]" []) = end
+addTail end (Compound "." [a, b]) = Compound "." [a, addTail end b]
 
 operatorp :: [String] -> PParser Expr -> PParser Expr
 operatorp ops subp = do e <- subp
@@ -70,15 +106,15 @@ hornp :: PParser Expr
 hornp = operatorp [":-"] orp
 
 orp :: PParser Expr
-orp = operatorp [";"] andp
+orp = operatorp [";", "!;"] ifp
+
+ifp :: PParser Expr
+ifp = operatorp ["->"] andp
 
 andp :: PParser Expr
 andp = operatorp [","] firstp
 
-firstp = impliesp
-
-impliesp :: PParser Expr
-impliesp = operatorp ["->"] unifyp
+firstp = unifyp
 
 unifyp :: PParser Expr
 unifyp = operatorp ["on", "=", "\\=", "<", ">", "<=", ">="] sump
@@ -106,19 +142,25 @@ varp = do t <- peekToken
           vars <- lift get
           case M.lookup s vars of
             Just i -> return $ Variable i
-            Nothing -> do let i = length vars
-                          lift $ put (M.insert s i vars)
-                          return $ Variable i
+            Nothing -> newVar $ Just s
 
 anonVarp :: PParser Expr
 anonVarp = do t <- peekToken
               s@(c:cs) <- nextL
               unless (c == '_') $
                 parsingError t "unused variable"
-              vars <- lift get
-              let i = length vars
-              lift $ put (M.insert s i vars)
-              return $ Variable i
+              newVar Nothing
+
+newVar :: Maybe String -> PParser Expr
+newVar (Just s) = do vars <- lift get
+                     let i = length vars
+                     lift $ put (M.insert s i vars)
+                     return $ Variable i
+newVar Nothing = do vars <- lift get
+                    let i = length vars
+                    let s = "_."++show i
+                    lift $ put (M.insert s i vars)
+                    return $ Variable i
 
 callp :: PParser Expr
 callp = do name <- identifierL
@@ -167,7 +209,7 @@ parseExpression :: String -> Either [ParsingError] Expr
 parseExpression code = do tokens <- lexCode code
                           fst $ runState (parse (hornp <* acceptL [pEofStr]) (tokens++[pEof])) M.empty
 
-parseClauses :: String -> Either [ParsingError] [((String, Int), (Expr, Expr))]
+parseClauses :: String -> Either [ParsingError] [((String, Int), Clause)]
 parseClauses code = do tokens <- lexCode code
                        fst $ runState (parse (programp [pEofStr]) (tokens++[pEof])) M.empty
 

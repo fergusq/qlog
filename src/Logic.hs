@@ -40,6 +40,8 @@ strExprToStr (Compound "." [SymbolInt i, tail]) = strExprToStr tail >>= Just . (
 strExprToStr (Compound "[]" []) = Just ""
 strExprToStr _ = Nothing
 
+type Clause = (Expr, Expr)
+
 -- State
 
 type SMap = M.Map Int Expr
@@ -88,11 +90,18 @@ unifyAll (x:xs) (y:ys) state = unify x y state >>= unifyAll xs ys
 
 -- Conjunction and disjunction
 
+conj :: Goal -> Goal -> Goal
+conj x y state = x state >>= y
+
 disj :: Goal -> Goal -> Goal
 disj x y state = x state <|> y state
 
-conj :: Goal -> Goal -> Goal
-conj x y state = x state >>= y
+cutDisj :: Goal -> Goal -> Goal
+cutDisj x y state = do let left = x state
+                       failed <- lift $ L.null left
+                       if failed
+                         then y state
+                         else left
 
 -- Operator aliases
 
@@ -128,7 +137,7 @@ fresh' n es f = callFresh $ \e -> fresh' (n-1) (e:es) f
 
 -- Converting expressions to predicate functions
 
-eval :: M.Map (String, Int) [(Expr, Expr)] -> [(Int, Expr)] -> Expr -> Goal
+eval :: M.Map (String, Int) [Clause] -> [(Int, Expr)] -> Expr -> Goal
 eval fs hvs e
   = fresh (length is) $ \is' -> let vs = hvs ++ zip is is' in eval' fs vs $ evalExpr vs e
   where is = nub $ searchVars (map fst hvs) e
@@ -142,13 +151,14 @@ searchVars _  (SymbolInt _) = []
 
 --tracedEval fs vs e state = let a = eval' fs vs e state in trace (show (deepWalk state e) ++ " <=> " ++ show (not $ null a)) a
 
-eval' :: M.Map (String, Int) [(Expr, Expr)] -> [(Int, Expr)] -> Expr -> Goal
+eval' :: M.Map (String, Int) [Clause] -> [(Int, Expr)] -> Expr -> Goal
 eval' fs vs e@(Variable _)                = \state -> let e' = walk state e
                                                       in if e /= e'
                                                            then eval' fs vs e' state
                                                            else error "sitomaton muuttuja"
 eval' fs _  (SymbolInt _)                 = error "odotettiin funktoria"
 eval' fs vs (Compound ";" [a, b])         = disj (eval' fs vs a) (eval' fs vs b)
+eval' fs vs (Compound "!;" [a, b])        = cutDisj (eval' fs vs a) (eval' fs vs b)
 eval' fs vs (Compound "," [a, b])         = conj (eval' fs vs a) (eval' fs vs b)
 eval' fs vs (Compound "=" [a, b])         = unify a b
 eval' fs vs (Compound "\\+" [e])          = \state -> lift (L.null (eval' fs vs e state)) >>= \c -> if c then pure state else empty
@@ -181,7 +191,7 @@ eval' fs vs e@(Compound f   args)         = case M.lookup (f, length args) fs of
                                               Just clauses -> evalPredicate fs e clauses
                                               Nothing -> error ("määrittelemätön funktori "++f++"/"++show (length args))
 
-evalPredicate :: M.Map (String, Int) [(Expr, Expr)] -> Expr -> [(Expr, Expr)] -> Goal
+evalPredicate :: M.Map (String, Int) [Clause] -> Expr -> [Clause] -> Goal
 evalPredicate _  _    [] = const empty
 evalPredicate fs pred cs = foldr1 disj $ map (evalPredicate' fs pred) cs
 
@@ -206,11 +216,11 @@ evalMath state e = case walk state e of
                      (Variable _) -> error "sitomaton muuttuja"
                      t -> t
 
-unifyClauses :: Expr -> Expr -> [(Expr, Expr)] -> Goal
+unifyClauses :: Expr -> Expr -> [Clause] -> Goal
 unifyClauses _ _ [] = const empty
 unifyClauses h b cs = foldr1 disj $ map (unifyClause h b) cs
 
-unifyClause :: Expr -> Expr -> (Expr, Expr) -> Goal
+unifyClause :: Expr -> Expr -> Clause -> Goal
 unifyClause head body (chead, cbody)
   = fresh (length is) $ \is' -> let vs = zip is is' in conj (unify head (evalExpr vs chead)) (unify body (evalExpr vs cbody))
   where is = nub $ searchVars [] chead ++ searchVars [] cbody
