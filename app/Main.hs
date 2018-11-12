@@ -4,6 +4,7 @@ import Control.Monad
 
 import Data.List
 import qualified Data.Map as M
+import qualified Data.Set as S
 
 import System.Environment
 import System.Exit
@@ -28,10 +29,10 @@ queryLoop fs = do putStr "?- "
                   if null query
                    then queryLoop fs
                    else case parseExpression query of
-                    Left error -> print error >> exitFailure
+                    Left error -> print error >> queryLoop fs
                     Right expr -> do let vars = map (Variable.(1+)) . nub $ searchVars [] expr
                                      let goal = eval fs [] expr
-                                     results <- L.toList $ goal (Substitutions {substitutions=M.empty, counter=0})
+                                     results <- L.toList $ goal S.empty emptyState
                                      output vars results
                                      queryLoop fs
 
