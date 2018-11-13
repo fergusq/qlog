@@ -67,17 +67,29 @@ dcgp = do head@(Compound name params) <- callp <|> parp
           start <- newVar Nothing
           end <- newVar Nothing
           let head' = Compound name (params ++ [start, end])
-          body <- dcgBodyp
+          body <- dcgBodyp <|> dcgEmptyBodyp
           return $ ((name, length params + 2), (head', body start end))
 
+dcgEmptyBodyp :: PParser (Expr -> Expr -> Expr)
+dcgEmptyBodyp = acceptL ["."] *> pure dcgEmpty
+
+dcgEmpty :: Expr -> Expr -> Expr
+dcgEmpty start end = Compound "=" [start, end]
+
 dcgBodyp :: PParser (Expr -> Expr -> Expr)
-dcgBodyp = (acceptL ["."] *> pure (\_ _ -> Compound "tosi" []))
-           <|> do f1 <- dcgCallp <|> dcgListp
-                  (do acceptL [","]
-                      f2 <- dcgBodyp
-                      var <- newVar Nothing
-                      return $ \start end -> Compound "," [f1 start var, f2 var end]
-                      ) <|> (acceptL ["."] *> pure f1)
+dcgBodyp = do acceptL ["{"]
+              f1 <- orp
+              acceptL ["}"]
+              (do acceptL [","]
+                  f2 <- dcgBodyp
+                  return $ \start end -> Compound "," [f1, f2 start end]
+                  ) <|> (acceptL ["."] *> pure (\start end -> Compound "," [f1, dcgEmpty start end]))
+       <|> do f1 <- dcgCallp <|> dcgListp
+              (do acceptL [","]
+                  f2 <- dcgBodyp
+                  var <- newVar Nothing
+                  return $ \start end -> Compound "," [f1 start var, f2 var end]
+                  ) <|> (acceptL ["."] *> pure f1)
 
 dcgCallp = do head@(Compound name params) <- callp <|> parp
               return $ \start end -> Compound name (params ++ [start, end])
