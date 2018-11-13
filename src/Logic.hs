@@ -8,6 +8,8 @@ import Data.Maybe
 import qualified Data.Map as M
 import qualified Data.Set as S
 
+import qualified ListT as L
+
 import Debug.Trace
 
 -- Expressions
@@ -90,7 +92,7 @@ lookupKeys m ks = (flip M.lookup m <$> ks) >>= \x -> case x of { Nothing -> []; 
 
 -- Goal
 
-type Goal = S.Set Int -> Substitutions -> [(IO (), Substitutions)]
+type Goal = S.Set Int -> Substitutions -> L.ListT IO Substitutions
 
 walk :: Substitutions -> Expr -> Expr
 walk state x@(Variable v) = fromMaybe x $ walk state <$> M.lookup v (substitutions state)
@@ -125,15 +127,15 @@ unifyAll (x:xs) (y:ys) = conj (unify x y) (unifyAll xs ys)
 -- Conjunction and disjunction
 
 conj :: Goal -> Goal -> Goal
-conj x y vvs state = x vvs state >>= \(io, state') -> map (\(io', state'') -> (io >> io', state'')) $ y vvs (gc vvs state')
+conj x y vvs state = x vvs state >>= \state' -> y vvs (gc vvs state')
 
 disj :: Goal -> Goal -> Goal
 disj x y vvs state = x vvs state <|> y vvs state
 
 cutDisj :: Goal -> Goal -> Goal
-cutDisj x y vvs state = let left = x vvs state
-                            failed = null left
-                        in if failed
+cutDisj x y vvs state = do let left = x vvs state
+                           failed <- liftIO $ L.null left
+                           if failed
                              then y vvs state
                              else left
 
@@ -150,7 +152,7 @@ infixl 3 #&#
 -- True and false
 
 true :: Goal
-true _ state = pure (return (), state)
+true _ state = pure state
 
 false :: Goal
 false _ _state = empty
@@ -196,7 +198,7 @@ eval' fs vs (Compound ";" [a, b])         = disj (eval' fs vs a) (eval' fs vs b)
 eval' fs vs (Compound "!;" [a, b])        = cutDisj (eval' fs vs a) (eval' fs vs b)
 eval' fs vs (Compound "," [a, b])         = conj (eval' fs vs a) (eval' fs vs b)
 eval' fs vs (Compound "=" [a, b])         = unify a b
-eval' fs vs (Compound "\\+" [e])          = \vvs state -> if null (eval' fs vs e vvs state) then true vvs state else false vvs state
+eval' fs vs (Compound "\\+" [e])          = \vvs state -> liftIO (L.null (eval' fs vs e vvs state)) >>= \c -> if c then true vvs state else false vvs state
 eval' fs vs (Compound "tosi" [])          = true
 eval' fs vs (Compound "epätosi" [])       = false
 eval' fs vs (Compound "on" [a, b])        = \vvs state -> unify a (evalMath state b) vvs state
@@ -204,10 +206,10 @@ eval' fs vs (Compound "muuttuja" [e])     = \vvs state -> case walk state e of {
 eval' fs vs (Compound "kokonaisluku" [e]) = \vvs state -> case walk state e of { (SymbolInt _) -> true vvs state; _ -> false vvs state }
 eval' fs vs (Compound "<" [a, b])         = \vvs state -> case map (walk state) [a, b] of
                                                             [SymbolInt i, SymbolInt j] -> if i < j then true vvs state else false vvs state
-                                                            [Variable i, SymbolInt j] -> map ((,) (return ()) . flip (addSubstitution i) state . SymbolInt) [j-1,j-2..]
-                                                            [SymbolInt i, Variable j] -> map ((,) (return ()) . flip (addSubstitution j) state . SymbolInt) [i+1,i+2..]
-                                                            [Variable i, Variable j] -> map ((,) (return ()) . \x -> addSubstitution j (SymbolInt x) $
-                                                                                                                     addSubstitution i (SymbolInt 0) state) [1..]
+                                                            [Variable i, SymbolInt j] -> L.fromFoldable $ map (flip (addSubstitution i) state . SymbolInt) [j-1,j-2..]
+                                                            [SymbolInt i, Variable j] -> L.fromFoldable $ map (flip (addSubstitution j) state . SymbolInt) [i+1,i+2..]
+                                                            [Variable i, Variable j] -> L.fromFoldable $ map (\x -> addSubstitution j (SymbolInt x) $
+                                                                                                                    addSubstitution i (SymbolInt 0) state) [1..]
                                                             _ -> false vvs state
 eval' fs vs (Compound ">" [a, b])         = eval' fs vs (Compound "<" [b, a])
 eval' fs vs (Compound "<=" [a, b])        = disj (unify a b) (eval' fs vs (Compound "<" [a, b]))
@@ -219,9 +221,9 @@ eval' fs vs (Compound "klausuuli" [h, b]) = \vvs state -> let e = walk state h
                                                                                       Nothing -> empty
                                                                (Variable _) -> unifyClauses e b (concat $ M.elems fs) vvs state
                                                                _ -> false vvs state
-eval' fs vs (Compound "näytä" [e])        = \_ state -> pure (putStr . show $ deepWalk state e, state)
-eval' fs vs (Compound "tulosta" [e])      = \_ state -> pure (putStr . exprToStr $ deepWalk state e, state)
-eval' fs vs (Compound "uusirivi" [])      = \_ state -> pure (putStr "\n", state)
+eval' fs vs (Compound "näytä" [e])        = \_ state -> liftIO (putStr . show $ deepWalk state e) >> pure state
+eval' fs vs (Compound "tulosta" [e])      = \_ state -> liftIO (putStr . exprToStr $ deepWalk state e) >> pure state
+eval' fs vs (Compound "uusirivi" [])      = \_ state -> liftIO (putStr "\n") >> pure state
 eval' fs vs e@(Compound f   args)         = case M.lookup (f, length args) fs of
                                               Just clauses -> evalPredicate fs e clauses
                                               Nothing -> error ("määrittelemätön funktori "++f++"/"++show (length args))
@@ -235,7 +237,7 @@ evalPredicate' fs pred (head, body)
   where is = nub $ searchVars [] head
 
 evalExpr :: [(Int, Expr)] -> Expr -> Expr
-evalExpr vs (Variable v)    = fromMaybe (error "sitomaton muuttuja") $ lookup v vs
+evalExpr vs (Variable v)    = fromMaybe (error "määrittelemätön muuttuja") $ lookup v vs
 evalExpr vs (Compound f es) = Compound f (map (evalExpr vs) es)
 evalExpr _  e               = e
 

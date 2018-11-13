@@ -10,6 +10,8 @@ import System.Environment
 import System.Exit
 import System.IO
 
+import qualified ListT as L
+
 import Lib
 import Logic
 import Parser
@@ -30,21 +32,22 @@ queryLoop fs = do putStr "?- "
                     Left error -> print error >> queryLoop fs
                     Right expr -> do let vars = map (Variable.(1+)) . nub $ searchVars [] expr
                                      let goal = eval fs [] expr
-                                     let results = goal S.empty emptyState
+                                     results <- L.uncons $ goal S.empty emptyState
                                      output vars results
                                      queryLoop fs
 
-output :: [Expr] -> [(IO (), Substitutions)] -> IO ()
-output vars [] = putStrLn "Ei."
-output vars states = putStrLn "Kyllä." >> output' vars states
+output :: [Expr] -> Maybe (Substitutions, L.ListT IO Substitutions) -> IO ()
+output vars Nothing = putStrLn "Ei."
+output vars (Just (state, results)) = putStrLn "Kyllä." >> output' vars state results
 
-output' :: [Expr] -> [(IO (), Substitutions)] -> IO ()
-output' vars [] = putStrLn "."
-output' vars ((msgs, state@Substitutions { substitutions = ss }):n)
-  = do msgs
-       forM_ (zip (reverse vars) ['X', 'Y', 'Z']) $ \(e, v) ->
+output' :: [Expr] -> Substitutions -> L.ListT IO Substitutions -> IO ()
+output' vars (state@Substitutions { substitutions = ss }) n
+  = do forM_ (zip (reverse vars) ['X', 'Y', 'Z']) $ \(e, v) ->
          putStrLn $ (v:" = ") ++ show (deepWalk state e)
-       unless (null n) $ do
-         line <- getLine
-         when (null line) $
-           output' vars n
+       results <- L.uncons n
+       case results of
+         Nothing -> return ()
+         Just (state, results) -> do
+           line <- getLine
+           when (null line) $
+             output' vars state results
