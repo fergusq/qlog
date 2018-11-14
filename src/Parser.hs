@@ -50,7 +50,7 @@ tokensp eof = many (many space *> tokenp) <* many space <* acceptL eof
 
 -- Parser
 
-type PParser r = ParserT (LNToken String) (State (M.Map String Int)) r
+type PParser r = ParserT (LNToken String) (State Int) r
 
 programp :: [String] -> PParser [((String, Int), Clause)]
 programp eof = some (clausep <|> dcgp) <* acceptL eof
@@ -64,8 +64,8 @@ clausep = do head@(Compound name params) <- callp <|> parp
 dcgp :: PParser ((String, Int), Clause)
 dcgp = do head@(Compound name params) <- callp <|> parp
           acceptL ["-->"]
-          start <- newVar Nothing
-          end <- newVar Nothing
+          start <- newVar
+          end <- newVar
           let head' = Compound name (params ++ [start, end])
           body <- dcgBodyp <|> dcgEmptyBodyp
           return $ ((name, length params + 2), (head', body start end))
@@ -87,7 +87,7 @@ dcgBodyp = do acceptL ["{"]
        <|> do f1 <- dcgCallp <|> dcgListp
               (do acceptL [","]
                   f2 <- dcgBodyp
-                  var <- newVar Nothing
+                  var <- newVar
                   return $ \start end -> Compound "," [f1 start var, f2 var end]
                   ) <|> (acceptL ["."] *> pure f1)
 
@@ -151,28 +151,19 @@ varp = do t <- peekToken
           s@(c:cs) <- nextL
           unless (isUpper c) $
             parsingError t "variable"
-          vars <- lift get
-          case M.lookup s vars of
-            Just i -> return $ Variable i
-            Nothing -> newVar $ Just s
+          return $ SymbolVar s
 
 anonVarp :: PParser Expr
 anonVarp = do t <- peekToken
               s@(c:cs) <- nextL
               unless (c == '_') $
                 parsingError t "unused variable"
-              newVar Nothing
+              newVar
 
-newVar :: Maybe String -> PParser Expr
-newVar (Just s) = do vars <- lift get
-                     let i = length vars
-                     lift $ put (M.insert s i vars)
-                     return $ Variable i
-newVar Nothing = do vars <- lift get
-                    let i = length vars
-                    let s = "_."++show i
-                    lift $ put (M.insert s i vars)
-                    return $ Variable i
+newVar :: PParser Expr
+newVar = do c <- lift get
+            lift $ put (c+1)
+            return $ SymbolVar ('_':'.':show c)
 
 callp :: PParser Expr
 callp = do name <- identifierL
@@ -219,11 +210,11 @@ lexCode code = runIdentity $ parse (tokensp [tEofChar]) (prelex $ code++[tEofCha
 
 parseExpression :: String -> Either [ParsingError] Expr
 parseExpression code = do tokens <- lexCode code
-                          fst $ runState (parse (hornp <* acceptL [pEofStr]) (tokens++[pEof])) M.empty
+                          fst $ runState (parse (hornp <* acceptL [pEofStr]) (tokens++[pEof])) 1
 
 parseClauses :: String -> Either [ParsingError] [((String, Int), Clause)]
 parseClauses code = do tokens <- lexCode code
-                       fst $ runState (parse (programp [pEofStr]) (tokens++[pEof])) M.empty
+                       fst $ runState (parse (programp [pEofStr]) (tokens++[pEof])) 1
 
 pEofStr = "<EOF>"
 pEof = LNToken pEofStr 0 0

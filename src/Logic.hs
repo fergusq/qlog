@@ -17,6 +17,7 @@ import Debug.Trace
 data Expr = Variable Int
           | Compound String [Expr]
           | SymbolInt Integer
+          | SymbolVar String
           deriving (Eq)
 
 instance Show Expr where
@@ -28,6 +29,7 @@ instance Show Expr where
     | otherwise                = f ++ "(" ++ show a ++ ", " ++ show b ++ ")"
   show (Compound f as) = f ++ "(" ++ intercalate ", " (map show as) ++ ")"
   show (SymbolInt i) = show i
+  show (SymbolVar v) = v
 
 showExprList :: Expr -> Expr -> String
 showExprList h (Compound "[]" [])      = show h
@@ -178,17 +180,18 @@ fresh' n es f = callFresh $ \e -> fresh' (n-1) (e:es) f
 
 -- Converting expressions to predicate functions
 
-eval :: M.Map (String, Int) [Clause] -> [(Int, Expr)] -> Expr -> Goal
+eval :: M.Map (String, Int) [Clause] -> [(String, Expr)] -> Expr -> Goal
 eval fs hvs e
   = fresh (length is) $ \is' -> let vs = hvs ++ zip is is' in eval' fs vs $ evalExpr vs e
   where is = nub $ searchVars (map fst hvs) e
 
-searchVars :: [Int] -> Expr -> [Int]
-searchVars ps (Variable i)
+searchVars :: [String] -> Expr -> [String]
+searchVars ps (SymbolVar i)
   | i `elem` ps = []
   | otherwise   = [i]
 searchVars ps (Compound f as) = concatMap (searchVars ps) as
 searchVars _  (SymbolInt _) = []
+searchVars _  (Variable _) = error "määrittelemätön muuttuja (!!)"
 
 --tracedEval fs vs e state = let a = eval' fs vs e state in trace (show (deepWalk state e) ++ " <=> " ++ show (not $ null a)) a
 
@@ -200,12 +203,13 @@ builtinPredicates = [
   "klausuuli",
   "näytä", "tulosta", "rivinvaihto"]
 
-eval' :: M.Map (String, Int) [Clause] -> [(Int, Expr)] -> Expr -> Goal
+eval' :: M.Map (String, Int) [Clause] -> [(String, Expr)] -> Expr -> Goal
 eval' fs vs e@(Variable _)                = \vvs state -> let e' = walk state e
                                                           in if e /= e'
                                                                then eval' fs vs e' vvs state
                                                                else error "sitomaton muuttuja"
 eval' fs _  (SymbolInt _)                 = error "odotettiin funktoria"
+eval' fs _  (SymbolVar _)                 = error "määrittelemätön muuttuja (!)"
 eval' fs vs (Compound ";" [a, b])         = disj (eval' fs vs a) (eval' fs vs b)
 eval' fs vs (Compound "!;" [a, b])        = cutDisj (eval' fs vs a) (eval' fs vs b)
 eval' fs vs (Compound "," [a, b])         = conj (eval' fs vs a) (eval' fs vs b)
@@ -276,8 +280,8 @@ evalPredicate' fs pred (head, body)
   = fresh (length is) $ \is' -> let vs = zip is is' in conj (unify pred (evalExpr vs head)) $ eval fs vs body
   where is = nub $ searchVars [] head
 
-evalExpr :: [(Int, Expr)] -> Expr -> Expr
-evalExpr vs (Variable v)    = fromMaybe (error "määrittelemätön muuttuja") $ lookup v vs
+evalExpr :: [(String, Expr)] -> Expr -> Expr
+evalExpr vs (SymbolVar v)   = fromMaybe (error "määrittelemätön muuttuja") $ lookup v vs
 evalExpr vs (Compound f es) = Compound f (map (evalExpr vs) es)
 evalExpr _  e               = e
 
