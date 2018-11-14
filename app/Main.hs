@@ -22,9 +22,16 @@ main :: IO ()
 main = do [code] <- getArgs
           case compileClauses M.empty code of
             Left error -> print error >> exitFailure
-            Right fs -> runInputT defaultSettings $ queryLoop fs
+            Right fs -> runInputT (programSettings fs) $ queryLoop fs
 
-queryLoop :: M.Map (String, Int) [(Expr, Expr)] -> InputT IO ()
+programSettings :: M.Map (String, Int) [Clause] -> Settings IO
+programSettings fs = setComplete (completer fs) defaultSettings
+
+completer :: M.Map (String, Int) [Clause] -> CompletionFunc IO
+completer fs = completeWord Nothing " \t" . completeKeys . sort . nub . (++ builtinPredicates) . map fst $ M.keys fs
+completeKeys keys key = return . map simpleCompletion $ filter (isPrefixOf key) keys
+
+queryLoop :: M.Map (String, Int) [Clause] -> InputT IO ()
 queryLoop fs = do input <- getInputLine "?- "
                   case input of
                     Nothing -> return ()
