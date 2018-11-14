@@ -192,6 +192,14 @@ searchVars _  (SymbolInt _) = []
 
 --tracedEval fs vs e state = let a = eval' fs vs e state in trace (show (deepWalk state e) ++ " <=> " ++ show (not $ null a)) a
 
+builtinPredicates :: [String]
+builtinPredicates = [
+  ";", "!;", ",", "=", "\\+",
+  "kaikille", "tosi", "epätosi", "on", "muuttuja", "kokonaisluku",
+  "<", ">", "<=", ">=", "välillä",
+  "klausuuli",
+  "näytä", "tulosta", "rivinvaihto"]
+
 eval' :: M.Map (String, Int) [Clause] -> [(Int, Expr)] -> Expr -> Goal
 eval' fs vs e@(Variable _)                = \vvs state -> let e' = walk state e
                                                           in if e /= e'
@@ -215,15 +223,31 @@ eval' fs vs (Compound "on" [a, b])        = \vvs state -> unify a (evalMath stat
 eval' fs vs (Compound "muuttuja" [e])     = \vvs state -> case walk state e of { (Variable _) -> true vvs state; _ -> false vvs state }
 eval' fs vs (Compound "kokonaisluku" [e]) = \vvs state -> case walk state e of { (SymbolInt _) -> true vvs state; _ -> false vvs state }
 eval' fs vs (Compound "<" [a, b])         = \vvs state -> case map (walk state) [a, b] of
-                                                            [SymbolInt i, SymbolInt j] -> if i < j then true vvs state else false vvs state
-                                                            [Variable i, SymbolInt j] -> L.fromFoldable $ map (flip (addSubstitution i) state . SymbolInt) [j-1,j-2..]
-                                                            [SymbolInt i, Variable j] -> L.fromFoldable $ map (flip (addSubstitution j) state . SymbolInt) [i+1,i+2..]
-                                                            [Variable i, Variable j] -> L.fromFoldable $ map (\x -> addSubstitution j (SymbolInt x) $
-                                                                                                                    addSubstitution i (SymbolInt 0) state) [1..]
+                                                            [SymbolInt i, SymbolInt j] -> boolToGoal (i < j) vvs state
+                                                            [Variable i, SymbolInt j] -> intListToStream i [j-1,j-2..] state
+                                                            [SymbolInt i, Variable j] -> intListToStream j [i+1,i+2..] state
+                                                            [Variable i, Variable j] -> intListToStream j [1..] $ addSubstitution i (SymbolInt 0) state
                                                             _ -> false vvs state
 eval' fs vs (Compound ">" [a, b])         = eval' fs vs (Compound "<" [b, a])
 eval' fs vs (Compound "<=" [a, b])        = disj (unify a b) (eval' fs vs (Compound "<" [a, b]))
 eval' fs vs (Compound ">=" [a, b])        = eval' fs vs (Compound "<=" [b, a])
+eval' fs vs (Compound "välillä" [a, b, e])= \vvs state -> case map (walk state) [a, e, b] of
+                                                            [SymbolInt i, SymbolInt j, SymbolInt k] -> boolToGoal (i <= j && j <= k) vvs state
+                                                            [SymbolInt i, Variable j, SymbolInt k] ->
+                                                              if i <= k then intListToStream j [i..k] state else false vvs state
+                                                            [SymbolInt i, SymbolInt j, Variable k] ->
+                                                              if i <= j then intListToStream k [j..] state else false vvs state
+                                                            [Variable i, SymbolInt j, SymbolInt k] ->
+                                                              if j <= k then intListToStream i [j,j-1..] state else false vvs state
+                                                            [SymbolInt i, Variable j, Variable k] ->
+                                                              intListToStream k [i..] $ addSubstitution j (SymbolInt i) state
+                                                            [Variable i, Variable j, SymbolInt k] ->
+                                                              intListToStream i [k,k-1..] $ addSubstitution j (SymbolInt k) state
+                                                            [Variable i, SymbolInt j, Variable k] ->
+                                                              intListToStream k [j..] $ addSubstitution i (SymbolInt j) state
+                                                            [Variable i, Variable j, Variable k] ->
+                                                              intListToStream k [0..] . addSubstitution i (SymbolInt 0) $ addSubstitution j (SymbolInt 0) state
+                                                            _ -> false vvs state
 eval' fs vs (Compound "klausuuli" [h, b]) = \vvs state -> let e = walk state h
                                                           in case e of
                                                                (Compound f args) -> case M.lookup (f, length args) fs of
@@ -237,6 +261,12 @@ eval' fs vs (Compound "rivinvaihto" [])   = \_ state -> liftIO (putStr "\n") >> 
 eval' fs vs e@(Compound f   args)         = case M.lookup (f, length args) fs of
                                               Just clauses -> evalPredicate fs e clauses
                                               Nothing -> error ("määrittelemätön funktori "++f++"/"++show (length args))
+
+listToStream :: Int -> [Expr] -> Substitutions -> L.ListT IO Substitutions
+listToStream var exprs state = L.fromFoldable $ map (flip (addSubstitution var) state) exprs
+
+intListToStream :: Int -> [Integer] -> Substitutions -> L.ListT IO Substitutions
+intListToStream var ints = listToStream var $ map SymbolInt ints
 
 evalPredicate :: M.Map (String, Int) [Clause] -> Expr -> [Clause] -> Goal
 evalPredicate _  _    [] = false
