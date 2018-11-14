@@ -12,7 +12,7 @@ jäsen(Y, [X|L]) :- jäsen(Y, L).
 lisää([A], X, [A|X]).
 lisää([A|X], Y, [A|Z]) :- lisää(X, Y, Z).
 
-alijono([], _).
+alijono([], []).
 alijono([A|X], [A|Y]) :- alijono(X, Y).
 alijono(X, [_|Y]) :- alijono(X, Y).
 
@@ -20,3 +20,19 @@ takaperin(A, B) :- muuttuja(B), takaperin_(A, B, []) !; takaperin_(B, A, []).
 
 takaperin_([]) --> [].
 takaperin_([A|At]) --> takaperin_(At), [A].
+
+% alijonot järjestettynä suurimmasta pienimpään
+
+alijono2(X, Y) :-
+    muuttuja(X),
+    pituus(Y, PituusY),
+    välillä(0, PituusY, I),
+    PituusX on PituusY - I,
+    pituus(X, PituusX),
+    alijono(X, Y).
+alijono2(X, Y) :-
+    \+ muuttuja(X),
+    pituus(X, PituusX),
+    PituusY >= PituusX,
+    pituus(Y, PituusY),
+    alijono(X, Y).
