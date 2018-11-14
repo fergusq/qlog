@@ -157,6 +157,10 @@ true _ state = pure state
 false :: Goal
 false _ _state = empty
 
+boolToGoal :: Bool -> Goal
+boolToGoal True = true
+boolToGoal False = false
+
 -- callFresh and fresh
 
 callFresh :: (Expr -> Goal) -> Goal
@@ -198,7 +202,13 @@ eval' fs vs (Compound ";" [a, b])         = disj (eval' fs vs a) (eval' fs vs b)
 eval' fs vs (Compound "!;" [a, b])        = cutDisj (eval' fs vs a) (eval' fs vs b)
 eval' fs vs (Compound "," [a, b])         = conj (eval' fs vs a) (eval' fs vs b)
 eval' fs vs (Compound "=" [a, b])         = unify a b
-eval' fs vs (Compound "\\+" [e])          = \vvs state -> liftIO (L.null (eval' fs vs e vvs state)) >>= \c -> if c then true vvs state else false vvs state
+eval' fs vs (Compound "\\+" [e])          = \vvs state -> do c <- liftIO (L.null (eval' fs vs e vvs state))
+                                                             boolToGoal c vvs state
+eval' fs vs (Compound "kaikille" [a, b])  = \vvs state -> do cs <- liftIO (L.fold (\a b -> return (b:a)) [] (
+                                                                     do state' <- eval' fs vs a vvs state
+                                                                        c <- liftIO (L.null (eval' fs vs b vvs state'))
+                                                                        return $ not c))
+                                                             boolToGoal (all id cs) vvs state
 eval' fs vs (Compound "tosi" [])          = true
 eval' fs vs (Compound "epätosi" [])       = false
 eval' fs vs (Compound "on" [a, b])        = \vvs state -> unify a (evalMath state b) vvs state
@@ -223,7 +233,7 @@ eval' fs vs (Compound "klausuuli" [h, b]) = \vvs state -> let e = walk state h
                                                                _ -> false vvs state
 eval' fs vs (Compound "näytä" [e])        = \_ state -> liftIO (putStr . show $ deepWalk state e) >> pure state
 eval' fs vs (Compound "tulosta" [e])      = \_ state -> liftIO (putStr . exprToStr $ deepWalk state e) >> pure state
-eval' fs vs (Compound "uusirivi" [])      = \_ state -> liftIO (putStr "\n") >> pure state
+eval' fs vs (Compound "rivinvaihto" [])   = \_ state -> liftIO (putStr "\n") >> pure state
 eval' fs vs e@(Compound f   args)         = case M.lookup (f, length args) fs of
                                               Just clauses -> evalPredicate fs e clauses
                                               Nothing -> error ("määrittelemätön funktori "++f++"/"++show (length args))

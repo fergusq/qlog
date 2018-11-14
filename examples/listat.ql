@@ -15,3 +15,8 @@ lisää([A|X], Y, [A|Z]) :- lisää(X, Y, Z).
 alijono([], _).
 alijono([A|X], [A|Y]) :- alijono(X, Y).
 alijono(X, [_|Y]) :- alijono(X, Y).
+
+takaperin(A, B) :- muuttuja(B), takaperin_(A, B, []) !; takaperin_(B, A, []).
+
+takaperin_([]) --> [].
+takaperin_([A|At]) --> takaperin_(At), [A].

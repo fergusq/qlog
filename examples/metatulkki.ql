@@ -13,7 +13,7 @@ syy(A = B, Todistus) :-
 syy((A, B), Todistus) :-
 	syy(A, TodistusA),
 	syy(B, TodistusB),
-	lisää(TodistusA, TodistusB, Todistus).
+	Todistus = [ja(TodistusA, TodistusB)].
 syy(F, Todistus) :-
 	klausuuli(F, Vartalo),
 	syy(Vartalo, TodistusF),
@@ -23,13 +23,13 @@ miksi(Lause) :-
 	syy(Lause, Todistus),
 	näytä(Lause),
 	tulosta(", koska:"),
-	uusirivi,
-	näytä_lista(Todistus).
+	rivinvaihto,
+	näytä_syylista(Todistus, 0).
 
-näytä_lista([]).
-näytä_lista([A|L]) :-
+näytä_syylista([], _).
+näytä_syylista([A|L], S) :-
 	näytä(A),
-	uusirivi,
+	rivinvaihto,
 	näytä_lista(L).
 
 lisää([A], X, [A|X]).
