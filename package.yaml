@@ -25,6 +25,7 @@ dependencies:
 - transformers
 - mtl
 - list-t
+- haskeline
 
 library:
   source-dirs: src

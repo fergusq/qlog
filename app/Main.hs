@@ -1,11 +1,13 @@
 module Main where
 
 import Control.Monad
+import Control.Monad.Trans.Class (lift)
 
 import Data.List
 import qualified Data.Map as M
 import qualified Data.Set as S
 
+import System.Console.Haskeline
 import System.Environment
 import System.Exit
 import System.IO
@@ -20,34 +22,40 @@ main :: IO ()
 main = do [code] <- getArgs
           case compileClauses M.empty code of
             Left error -> print error >> exitFailure
-            Right fs -> do queryLoop fs
+            Right fs -> runInputT defaultSettings $ queryLoop fs
 
-queryLoop :: M.Map (String, Int) [(Expr, Expr)] -> IO ()
-queryLoop fs = do putStr "?- "
-                  hFlush stdout
-                  query <- getLine
-                  if null query
-                   then queryLoop fs
-                   else case parseExpression query of
-                    Left error -> print error >> queryLoop fs
-                    Right expr -> do let vars = map (Variable.(1+)) . nub $ searchVars [] expr
-                                     let goal = eval fs [] expr
-                                     results <- L.uncons $ goal S.empty emptyState
-                                     output vars results
-                                     queryLoop fs
+queryLoop :: M.Map (String, Int) [(Expr, Expr)] -> InputT IO ()
+queryLoop fs = do input <- getInputLine "?- "
+                  case input of
+                    Nothing -> return ()
+                    Just query ->
+                      if null query
+                        then queryLoop fs
+                        else case parseExpression query of
+                          Left error -> outputStrLn (show error) >> queryLoop fs
+                          Right expr -> do let vars = map (Variable.(1+)) . nub $ searchVars [] expr
+                                           let goal = eval fs [] expr
+                                           results <- lift . L.uncons $ goal S.empty emptyState
+                                           output vars results
+                                           queryLoop fs
 
-output :: [Expr] -> Maybe (Substitutions, L.ListT IO Substitutions) -> IO ()
-output vars Nothing = putStrLn "Ei."
-output vars (Just (state, results)) = putStrLn "Kyllä." >> output' vars state results
+output :: [Expr] -> Maybe (Substitutions, L.ListT IO Substitutions) -> InputT IO ()
+output vars Nothing = outputStrLn "Ei."
+output vars (Just (state, results)) = outputStrLn "Kyllä." >> output' False vars state results
 
-output' :: [Expr] -> Substitutions -> L.ListT IO Substitutions -> IO ()
-output' vars (state@Substitutions { substitutions = ss }) n
-  = do forM_ (zip (reverse vars) ['X', 'Y', 'Z']) $ \(e, v) ->
-         putStrLn $ (v:" = ") ++ show (deepWalk state e)
-       results <- L.uncons n
+output' :: Bool -> [Expr] -> Substitutions -> L.ListT IO Substitutions -> InputT IO ()
+output' outputAll vars (state@Substitutions { substitutions = ss }) n
+  = do outputStr . intercalate "\n" $ map (\(v, e) -> v ++ e) $ zip ["X = ", "Y = ", "Z = "] (reverse $ map (show . deepWalk state) vars)
+       results <- lift $ L.uncons n
        case results of
-         Nothing -> return ()
-         Just (state, results) -> do
-           line <- getLine
-           when (null line) $
-             output' vars state results
+         Nothing -> outputStrLn ""
+         Just (state, results) ->
+           if outputAll
+             then output' True vars state results
+             else do
+               cmd <- getInputChar " ? "
+               case cmd of
+                 Nothing -> outputStrLn ""
+                 Just ';' -> output' False vars state results
+                 Just 'k' -> output' True vars state results
+                 Just _ -> outputStrLn ""
