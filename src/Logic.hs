@@ -44,6 +44,14 @@ strExprToStr (Compound "." [SymbolInt i, tail]) = strExprToStr tail >>= Just . (
 strExprToStr (Compound "[]" []) = Just ""
 strExprToStr _ = Nothing
 
+listToExpr :: [Expr] -> Expr
+listToExpr = foldr (\a b -> Compound "." [a, b]) (Compound "[]" [])
+
+exprToList :: Expr -> [Expr]
+exprToList (Compound "[]" [])    = []
+exprToList (Compound "." [h, t]) = h : exprToList t
+exprToList _                     = error "odotettiin listaa"
+
 type Clause = (Expr, Expr)
 
 -- Substitutions
@@ -197,7 +205,7 @@ searchVars _  (Variable _) = error "määrittelemätön muuttuja (!!)"
 
 builtinPredicates :: [String]
 builtinPredicates = [
-  ";", "!;", ",", "=", "\\+",
+  ";", "!;", ",", "=", "\\+", "=..",
   "kaikille", "tosi", "epätosi", "on", "muuttuja", "kokonaisluku",
   "<", ">", "<=", ">=", "välillä",
   "klausuuli",
@@ -258,6 +266,18 @@ eval' fs vs (Compound "klausuuli" [h, b]) = \vvs state -> let e = walk state h
                                                                                       Just clauses -> unifyClauses e b clauses vvs state
                                                                                       Nothing -> empty
                                                                (Variable _) -> unifyClauses e b (concat $ M.elems fs) vvs state
+                                                               _ -> false vvs state
+eval' fs vs (Compound "=.." [p, l])       = \vvs state -> let e = walk state p
+                                                          in case e of
+                                                               (Compound f args) ->
+                                                                 let l' = Compound "." [Compound f [], listToExpr args]
+                                                                 in unify l l' vvs state
+                                                               (Variable _) ->
+                                                                 case walk state l of
+                                                                   (Compound "." [Compound f [], args]) ->
+                                                                     let p' = Compound f (exprToList $ deepWalk state args)
+                                                                     in unify p p' vvs state
+                                                                   _ -> false vvs state
                                                                _ -> false vvs state
 eval' fs vs (Compound "näytä" [e])        = \_ state -> liftIO (putStr . show $ deepWalk state e) >> pure state
 eval' fs vs (Compound "tulosta" [e])      = \_ state -> liftIO (putStr . exprToStr $ deepWalk state e) >> pure state
