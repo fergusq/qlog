@@ -34,16 +34,17 @@ tokenp = lnToken (some (oneOfL "0123456789"))
          <|> acceptL "-->"
          <|> acceptL "\\+"
          <|> acceptL "\\="
+         <|> acceptL "=.."
          <|> acceptL "<="
          <|> acceptL ">="
          <|> acceptL "!;"
          <|> quotep
-         <|> (((:"")<$>) <$> oneOfL "()[]{}<>.,;=|+-*/%")
+         <|> ((:"")<$>) <$> oneOfL "()[]{}<>.,;=|+-*/%"
 
 quotep :: TParser (LNToken String)
-quotep = acceptL "\"" *> (
-           (('"':)<$>) <$> lnToken (many $ (noneOfL "\\\"" <|> (oneOfL "\\" *> oneOfL "\"\\")))
-         ) <* acceptL "\""
+quotep = acceptL "\"" *>
+           ((('"':)<$>) <$> lnToken (many (noneOfL "\\\"" <|> (oneOfL "\\" *> oneOfL "\"\\"))))
+         <* acceptL "\""
 
 tokensp :: String -> TParser [LNToken String]
 tokensp eof = many (many space *> tokenp) <* many space <* acceptL eof
@@ -129,7 +130,7 @@ andp = operatorp [","] firstp
 firstp = unifyp
 
 unifyp :: PParser Expr
-unifyp = operatorp ["on", "=", "\\=", "<", ">", "<=", ">="] sump
+unifyp = operatorp ["on", "=", "\\=", "<", ">", "<=", ">=", "=.."] sump
 
 sump :: PParser Expr
 sump = operatorp ["+", "-"] termp
@@ -166,17 +167,25 @@ newVar = do c <- lift get
             return $ SymbolVar ('_':'.':show c)
 
 callp :: PParser Expr
-callp = do name <- identifierL
-           args <- (
-               acceptL ["("] *> ((:) <$> firstp <*> many (acceptL [","] *> firstp)) <* acceptL [")"]
-             ) <|> (acceptL["("] *> acceptL [")"] *> pure []) <|> pure []
+callp = do name <- content <$> noneOfL ["(", ")", pEofStr]
+           args <- argsp
            return $ Compound name args
+    <|> do name <- identifierL
+           args <- argsp <|> pure []
+           return $ Compound name args
+
+argsp :: PParser [Expr]
+argsp = do acceptL ["("]
+           args <- (:) <$> firstp <*> many (acceptL [","] *> firstp)
+           acceptL [")"]
+           return args
+    <|> acceptL["(", ")"] *> pure []
 
 listp :: PParser Expr
 listp = emptylistp <|> nonemptylistp
 
 emptylistp :: PParser Expr
-emptylistp = acceptL ["["] *> acceptL ["]"] *> pure (Compound "[]" [])
+emptylistp = acceptL ["[", "]"] *> pure (Compound "[]" [])
 
 nonemptylistp :: PParser Expr
 nonemptylistp = do acceptL ["["]
