@@ -47,12 +47,13 @@ näytä_syylista([A|L], S) :-
 	T on S+1,
 	näytä_syylista(L, T).
 
-toista(0, _).
 toista(I, P) :-
-	I > 0,
-	P,
-	J on I-1,
-	toista(J, P).
+	I >= 1,
+	\+((
+		välillä(1, I, _),
+		P,
+		epätosi
+	)).
 
 peano(0).
 peano(s(N)) :- peano(N).
