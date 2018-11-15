@@ -57,3 +57,6 @@ lomita([A|X], [B|Y], [B|Z]) :- A>B, lomita([A|X], Y, Z).
 jaa([], [], []).
 jaa([A], [A], []).
 jaa([A,B|L], [A|X], [B|Y]) :- jaa(L, X, Y).
+
+kaikki_välillä(_, _, []).
+kaikki_välillä(A, B, [I|It]) :- välillä(A, B, I), kaikki_välillä(A, B, It).
