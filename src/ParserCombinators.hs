@@ -70,7 +70,7 @@ nothing = return mempty
 nextToken :: (Monad m) => ParserT t m t
 nextToken = ParserT $ \(t:ts) -> return $ Right (ts, t)
 
--- peekToken returns the next token without eating it
+-- | peekToken returns the next token without eating it
 
 peekToken :: (Monad m) => ParserT t m t
 peekToken = ParserT $ \ts@(t:_) -> return $ Right (ts, t)
