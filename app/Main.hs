@@ -29,7 +29,10 @@ programSettings fs = setComplete (completer fs) defaultSettings
 
 completer :: M.Map (String, Int) [Clause] -> CompletionFunc IO
 completer fs = completeWord Nothing " \t" . completeKeys . sort . nub . (++ builtinPredicates) . map fst $ M.keys fs
-completeKeys keys key = return . map simpleCompletion $ filter (isPrefixOf key) keys
+completeKeys keys key = return . map unfinishedCompletion $ filter (isPrefixOf key) keys
+
+unfinishedCompletion :: String -> Completion
+unfinishedCompletion str = Completion str str False
 
 queryLoop :: M.Map (String, Int) [Clause] -> InputT IO ()
 queryLoop fs = do input <- getInputLine "?- "
