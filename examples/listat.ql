@@ -36,3 +36,24 @@ alijono2(X, Y) :-
     PituusY >= PituusX,
     pituus(Y, PituusY),
     alijono(X, Y).
+
+järjestyksessä([]).
+järjestyksessä([_]).
+järjestyksessä([A,B|X]) :- A<=B, järjestyksessä([B|X]).
+
+lomitusjärjestys([], []).
+lomitusjärjestys([A], [A]).
+lomitusjärjestys([A,B|L], Valmis) :-
+	jaa([A,B|L], L1, L2),
+	lomitusjärjestys(L1, V1),
+	lomitusjärjestys(L2, V2),
+	lomita(V1, V2, Valmis).
+
+lomita(X, [], X).
+lomita([], Y, Y).
+lomita([A|X], [B|Y], [A|Z]) :- A<=B, lomita(X, [B|Y], Z).
+lomita([A|X], [B|Y], [B|Z]) :- A>B, lomita([A|X], Y, Z).
+
+jaa([], [], []).
+jaa([A], [A], []).
+jaa([A,B|L], [A|X], [B|Y]) :- jaa(L, X, Y).
