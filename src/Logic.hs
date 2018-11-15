@@ -224,11 +224,15 @@ eval' fs vs (Compound "," [a, b])         = conj (eval' fs vs a) (eval' fs vs b)
 eval' fs vs (Compound "=" [a, b])         = unify a b
 eval' fs vs (Compound "\\+" [e])          = \vvs state -> do c <- liftIO (L.null (eval' fs vs e vvs state))
                                                              boolToGoal c vvs state
-eval' fs vs (Compound "kaikille" [a, b])  = \vvs state -> do cs <- liftIO (L.fold (\a b -> return (b:a)) [] (
+eval' fs vs (Compound "kaikille" [a, b])  = \vvs state -> do cs <- liftIO . L.toReverseList $
                                                                      do state' <- eval' fs vs a vvs state
                                                                         c <- liftIO (L.null (eval' fs vs b vvs state'))
-                                                                        return $ not c))
+                                                                        return $ not c
                                                              boolToGoal (all id cs) vvs state
+eval' fs vs (Compound "kaikki" [t, g, b]) = \vvs state -> do cs <- liftIO . L.toList $
+                                                                     do state' <- eval' fs vs g vvs state
+                                                                        return $ deepWalk state' t
+                                                             unify b (listToExpr cs) vvs state
 eval' fs vs (Compound "tosi" [])          = true
 eval' fs vs (Compound "epätosi" [])       = false
 eval' fs vs (Compound "on" [a, b])        = \vvs state -> unify a (evalMath state b) vvs state
