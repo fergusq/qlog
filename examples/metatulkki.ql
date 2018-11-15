@@ -1,3 +1,5 @@
+(A \= B) :- \+ (A = B).
+
 mt1(tosi).
 mt1(A = B) :-
 	A = B.
@@ -10,6 +12,16 @@ mt1(F) :-
 syy(tosi, []).
 syy(A = B, Todistus) :-
 	A = B, Todistus = [A = B].
+syy(A on B, Todistus) :-
+	A on B, Todistus = [A on B].
+syy(A > B, Todistus) :-
+	A > B, Todistus = [A > B].
+syy(A < B, Todistus) :-
+	A < B, Todistus = [A < B].
+syy(A >= B, Todistus) :-
+	A >= B, Todistus = [A >= B].
+syy(A <= B, Todistus) :-
+	A <= B, Todistus = [A <= B].
 syy((A, B), Todistus) :-
 	syy(A, TodistusA),
 	syy(B, TodistusB),
@@ -17,23 +29,30 @@ syy((A, B), Todistus) :-
 syy(F, Todistus) :-
 	klausuuli(F, Vartalo),
 	syy(Vartalo, TodistusF),
-	Todistus = [Vartalo | TodistusF].
+	Todistus = [F | TodistusF].
 
 miksi(Lause) :-
 	syy(Lause, Todistus),
-	näytä(Lause),
-	tulosta(", koska:"),
-	rivinvaihto,
 	näytä_syylista(Todistus, 0).
 
 näytä_syylista([], _).
+näytä_syylista([ja(A, B)], S) :-
+	näytä_syylista(A, S),
+	näytä_syylista(B, S).
 näytä_syylista([A|L], S) :-
+	A \= ja(_, _),
+	toista(S, tulosta(" ")),
 	näytä(A),
 	rivinvaihto,
-	näytä_lista(L).
+	T on S+1,
+	näytä_syylista(L, T).
 
-lisää([A], X, [A|X]).
-lisää([A|X], Y, [A|Z]) :- lisää(X, Y, Z).
+toista(0, _).
+toista(I, P) :-
+	I > 0,
+	P,
+	J on I-1,
+	toista(J, P).
 
 peano(0).
 peano(s(N)) :- peano(N).
