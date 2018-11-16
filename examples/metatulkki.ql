@@ -1,3 +1,5 @@
+:- [listat].
+
 (A \= B) :- \+ (A = B).
 
 % Tavanomainen metatulkki
@@ -11,7 +13,7 @@ mt1(F) :-
 	klausuuli(F, Vartalo),
 	mt1(Vartalo).
 
-% Leveyshakeva metatulkki
+% Konjunktioita leveyshakeva metatulkki
 
 mt2(F) :- mt2_iteroi([F]).
 
@@ -27,6 +29,11 @@ mt2_kaikki_totta([E|Et]) -->
 
 mt2_(tosi) --> [].
 mt2_(A = B) --> { A = B }.
+mt2_(A > B) --> { A > B }.
+mt2_(A < B) --> { A < B }.
+mt2_(A >= B) --> { A >= B }.
+mt2_(A <= B) --> { A <= B }.
+mt2_(A on B) --> { A on B }.
 mt2_((A, B)) --> [A, B].
 mt2_((A; B)) --> [A].
 mt2_((A; B)) --> [B].
@@ -95,3 +102,35 @@ summa(0, B, B).
 summa(s(A), B, s(S)) :- summa(A, B, S).
 
 huono(X) :- huono(X), epätosi, huono(X).
+
+% HELPO-kielen esimerkki Mikro-lehdestä 2/1985
+
+lihava(X) :-
+	painaa(X, Y),
+	Y > 90.
+
+painaa(ari, 95).
+painaa(eppu, 65).
+painaa(virpi, 60).
+painaa(urpo, 55).
+
+normaali(X) :-
+	painaa(X, Y),
+	Y <= 90,
+	Y >= 60.
+
+laiha(X) :-
+	painaa(X, Y),
+	Y < 60.
+
+normaali(X) :- terve(X).
+normaali(X) :- työssäkäyvä(X).
+normaali(X) :- työtön(X).
+
+terve(urpo).
+työssäkäyvä(_) :- epätosi.
+työtön(_) :- epätosi.
+
+viisas(eppu) :- kaunis(virpi).
+tyhmä(urpo) :- \+ viisas(eppu).
+kaunis(virpi).
