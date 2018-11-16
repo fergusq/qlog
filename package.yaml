@@ -26,6 +26,8 @@ dependencies:
 - mtl
 - list-t
 - haskeline
+- directory
+- filepath
 
 library:
   source-dirs: src

@@ -19,8 +19,9 @@ import Logic
 import Parser
 
 main :: IO ()
-main = do [code] <- getArgs
-          case compileClauses M.empty code of
+main = do [file] <- getArgs
+          clauses <- compileFile M.empty file
+          case clauses of
             Left error -> print error >> exitFailure
             Right fs -> runInputT (programSettings fs) $ queryLoop fs
 

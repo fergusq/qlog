@@ -53,8 +53,18 @@ tokensp eof = many (many space *> tokenp) <* many space <* acceptL eof
 
 type PParser r = ParserT (LNToken String) (State Int) r
 
-programp :: [String] -> PParser [((String, Int), Clause)]
-programp eof = some (clausep <|> dcgp) <* acceptL eof
+data Statement = ClauseDeclaration ((String, Int), Clause)
+               | Directive Expr
+
+programp :: [String] -> PParser [Statement]
+programp eof = some statementp <* acceptL eof
+
+statementp :: PParser Statement
+statementp = ClauseDeclaration <$> (clausep <|> dcgp)
+             <|> Directive <$> directivep
+
+directivep :: PParser Expr
+directivep = acceptL [":-"] *> orp <* acceptL ["."]
 
 clausep :: PParser ((String, Int), Clause)
 clausep = do head@(Compound name params) <- callp <|> parp
@@ -221,7 +231,7 @@ parseExpression :: String -> Either [ParsingError] Expr
 parseExpression code = do tokens <- lexCode code
                           fst $ runState (parse (hornp <* acceptL [pEofStr]) (tokens++[pEof])) 1
 
-parseClauses :: String -> Either [ParsingError] [((String, Int), Clause)]
+parseClauses :: String -> Either [ParsingError] [Statement]
 parseClauses code = do tokens <- lexCode code
                        fst $ runState (parse (programp [pEofStr]) (tokens++[pEof])) 1
 
