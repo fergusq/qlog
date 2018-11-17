@@ -38,6 +38,7 @@ tokenp = lnToken (some (oneOfL "0123456789"))
          <|> acceptL "<="
          <|> acceptL ">="
          <|> acceptL "!;"
+         <|> acceptL "//"
          <|> quotep
          <|> ((:"")<$>) <$> oneOfL "()[]{}<>.,;=|+-*/%"
 
@@ -74,12 +75,17 @@ clausep = do head@(Compound name params) <- callp <|> parp
 
 dcgp :: PParser ((String, Int), Clause)
 dcgp = do head@(Compound name params) <- callp <|> parp
+          semicontext <- Just <$> (acceptL [","] *> dcgListp) <|> pure Nothing
           acceptL ["-->"]
           start <- newVar
           end <- newVar
           let head' = Compound name (params ++ [start, end])
           body <- dcgBodyp <|> dcgEmptyBodyp
-          return $ ((name, length params + 2), (head', body start end))
+          body' <- case semicontext of
+                     Nothing -> return $ body start end
+                     Just sc -> do v <- newVar
+                                   return $ Compound "," [body start v, sc end v]
+          return $ ((name, length params + 2), (head', body'))
 
 dcgEmptyBodyp :: PParser (Expr -> Expr -> Expr)
 dcgEmptyBodyp = acceptL ["."] *> pure dcgEmpty
@@ -146,7 +152,7 @@ sump :: PParser Expr
 sump = operatorp ["+", "-"] termp
 
 termp :: PParser Expr
-termp = operatorp ["*", "/", "%"] simplep
+termp = operatorp ["*", "/", "//", "%"] simplep
 
 simplep :: PParser Expr
 simplep = intp <|> varp <|> anonVarp <|> callp <|> listp <|> stringp <|> negp <|> parp
