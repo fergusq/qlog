@@ -1,5 +1,6 @@
 module Logic where
 import Control.Applicative
+import Control.Monad
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO)
 import Data.Char (isAlphaNum, chr)
@@ -208,7 +209,7 @@ builtinPredicates = [
   ";", "!;", ",", "=", "\\+", "=..",
   "kaikille", "tosi", "epätosi", "on", "muuttuja", "kokonaisluku",
   "<", ">", "<=", ">=", "välillä",
-  "klausuuli",
+  "klausuuli", "listaus",
   "näytä", "tulosta", "rivinvaihto"]
 
 eval' :: M.Map (String, Int) [Clause] -> [(String, Expr)] -> Expr -> Goal
@@ -271,6 +272,16 @@ eval' fs vs (Compound "klausuuli" [h, b]) = \vvs state -> let e = walk state h
                                                                                       Nothing -> empty
                                                                (Variable _) -> unifyClauses e b (concat $ M.elems fs) vvs state
                                                                _ -> false vvs state
+eval' fs vs (Compound "listaus" [p])      = \vvs state ->
+  case deepWalk state p of
+    Compound "/" [Compound f [], SymbolInt a] -> case M.lookup (f, fromInteger a) fs of
+                                                   Just cs -> do liftIO $
+                                                                   forM_ cs $ \(h, b) ->
+                                                                     putStrLn $ (show $ deepWalk state h) ++ " :- " ++ (show $ deepWalk state b)
+                                                                 true vvs state
+                                                   Nothing -> false vvs state
+    Compound "//" [Compound f [], SymbolInt a] -> eval' fs vs (Compound "listaus" [Compound "/" [Compound f [], SymbolInt $ a+2]]) vvs state
+    _ -> false vvs state
 eval' fs vs (Compound "=.." [p, l])       = \vvs state -> let e = walk state p
                                                           in case e of
                                                                (Compound f args) ->
