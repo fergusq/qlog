@@ -29,7 +29,7 @@ programSettings :: M.Map (String, Int) [Clause] -> Settings IO
 programSettings fs = setComplete (completer fs) defaultSettings
 
 completer :: M.Map (String, Int) [Clause] -> CompletionFunc IO
-completer fs = completeWord Nothing " \t" . completeKeys . sort . nub . (++ builtinPredicates) . map fst $ M.keys fs
+completer fs = completeWord Nothing " \t()[]{},;" . completeKeys . sort . nub . (++ builtinPredicates) . map fst $ M.keys fs
 completeKeys keys key = return . map unfinishedCompletion $ filter (isPrefixOf key) keys
 
 unfinishedCompletion :: String -> Completion
