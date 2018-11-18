@@ -41,6 +41,45 @@ mt2_(F) -->
 	{ klausuuli(F, Vartalo) },
 	[Vartalo].
 
+% Metatulkki, joka näyttää suorituspolun
+
+näytä_polku(tosi, S).
+näytä_polku(A = B, S) :-
+	A = B,
+	näytä_sisennetty(A = B, S).
+näytä_polku(A on B, S) :-
+	A on B,
+	näytä_sisennetty(A on B, S).
+näytä_polku(A > B, S) :-
+	A > B,
+	näytä_sisennetty(A > B, S).
+näytä_polku(A < B, S) :-
+	A < B,
+	näytä_sisennetty(A < B, S).
+näytä_polku(A >= B, S) :-
+	A >= B,
+	näytä_sisennetty(A >= B, S).
+näytä_polku(A <= B, S) :-
+	A <= B,
+	näytä_sisennetty(A <= B, S).
+näytä_polku(välillä(A, B, C), S) :-
+	välillä(A, B, C),
+	näytä_sisennetty(välillä(A, B, C), S).
+näytä_polku(A =.. B, S) :-
+	A =.. B,
+	näytä_sisennetty(A =.. B, S).
+näytä_polku(klausuuli(A, B), S) :-
+	klausuuli(A, B),
+	näytä_sisennetty(klausuuli(A, B), S).
+näytä_polku((A, B), S) :-
+	näytä_polku(A, S),
+	näytä_polku(B, S).
+näytä_polku(F, S) :-
+	klausuuli(F, Vartalo),
+	S2 on S+1,
+	näytä_polku(Vartalo, S2),
+	näytä_sisennetty(F, S).
+
 % Metatulkki, joka tallentaa suorituspolun
 
 syy(tosi, []).
@@ -56,6 +95,8 @@ syy(A >= B, Todistus) :-
 	A >= B, Todistus = [A >= B].
 syy(A <= B, Todistus) :-
 	A <= B, Todistus = [A <= B].
+syy(A =.. B, Todistus) :-
+	A =.. B, Todistus = [A =.. B].
 syy(klausuuli(A, B), Todistus) :-
 	klausuuli(A, B), Todistus = [klausuuli(A, B)].
 syy((A, B), Todistus) :-
@@ -79,9 +120,7 @@ näytä_syylista([ja(A, B)], S) :-
 	näytä_syylista(B, S).
 näytä_syylista([A|L], S) :-
 	A \= ja(_, _),
-	toista(S, tulosta(" ")),
-	näytä(A),
-	rivinvaihto,
+	näytä_sisennetty(A, S),
 	T on S+1,
 	näytä_syylista(L, T).
 
@@ -92,6 +131,11 @@ toista(I, P) :-
 		P,
 		epätosi
 	)).
+
+näytä_sisennetty(F, S) :-
+	toista(S, tulosta(" ")),
+	näytä(F),
+	rivinvaihto.
 
 % Predikaatteja, joilla testata metatulkkeja
 
