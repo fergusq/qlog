@@ -53,7 +53,12 @@ exprToList (Compound "[]" [])    = []
 exprToList (Compound "." [h, t]) = h : exprToList t
 exprToList _                     = error "odotettiin listaa"
 
-type Clause = (Expr, Expr)
+type Clause = (Expr, Expr, Mode)
+data Mode = NoCut | Cut
+
+instance Show Mode where
+  show NoCut = "."
+  show Cut = "!."
 
 -- Substitutions
 
@@ -276,8 +281,10 @@ eval' fs vs (Compound "listaus" [p])      = \vvs state ->
   case deepWalk state p of
     Compound "/" [Compound f [], SymbolInt a] -> case M.lookup (f, fromInteger a) fs of
                                                    Just cs -> do liftIO $
-                                                                   forM_ cs $ \(h, b) ->
-                                                                     putStrLn $ (show $ deepWalk state h) ++ " :- " ++ (show $ deepWalk state b)
+                                                                   forM_ cs $ \(head, body, mode) ->
+                                                                     putStrLn $ (show $ deepWalk state head) ++ " :- "
+                                                                                                             ++ (show $ deepWalk state body)
+                                                                                                             ++ show mode
                                                                  true vvs state
                                                    Nothing -> false vvs state
     Compound "//" [Compound f [], SymbolInt a] -> eval' fs vs (Compound "listaus" [Compound "/" [Compound f [], SymbolInt $ a+2]]) vvs state
@@ -288,15 +295,16 @@ eval' fs vs (Compound "=.." [p, l])       = \vvs state -> let e = walk state p
                                                                  let l' = Compound "." [Compound f [], listToExpr args]
                                                                  in unify l l' vvs state
                                                                (Variable _) ->
-                                                                 case walk state l of
+                                                                 case deepWalk state l of
                                                                    (Compound "." [Compound f [], args]) ->
-                                                                     let p' = Compound f (exprToList $ deepWalk state args)
+                                                                     let p' = Compound f (exprToList args)
                                                                      in unify p p' vvs state
                                                                    _ -> false vvs state
                                                                _ -> false vvs state
 eval' fs vs (Compound "näytä" [e])        = \_ state -> liftIO (putStr . show $ deepWalk state e) >> pure state
 eval' fs vs (Compound "tulosta" [e])      = \_ state -> liftIO (putStr . exprToStr $ deepWalk state e) >> pure state
 eval' fs vs (Compound "rivinvaihto" [])   = \_ state -> liftIO (putStr "\n") >> pure state
+eval' fs vs (Compound "rv" [])            = eval' fs vs (Compound "rivinvaihto" [])
 eval' fs vs e@(Compound f   args)         = case M.lookup (f, length args) fs of
                                               Just clauses -> evalPredicate fs e clauses
                                               Nothing -> error ("määrittelemätön funktori "++f++"/"++show (length args))
@@ -309,9 +317,12 @@ intListToStream var ints = listToStream var $ map SymbolInt ints
 
 evalPredicate :: M.Map (String, Int) [Clause] -> Expr -> [Clause] -> Goal
 evalPredicate _  _    [] = false
-evalPredicate fs pred cs = foldr1 disj $ map (evalPredicate' fs pred) cs
+evalPredicate fs pred (c@(_, _, mode):cs) = disj' (evalPredicate' fs pred c) $ evalPredicate fs pred cs
+  where disj' = case mode of
+                  NoCut -> disj
+                  Cut -> cutDisj
 
-evalPredicate' fs pred (head, body)
+evalPredicate' fs pred (head, body, _)
   = fresh (length is) $ \is' -> let vs = zip is is' in conj (unify pred (evalExpr vs head)) $ eval fs vs body
   where is = nub $ searchVars [] head
 
@@ -337,6 +348,6 @@ unifyClauses _ _ [] = false
 unifyClauses h b cs = foldr1 disj $ map (unifyClause h b) cs
 
 unifyClause :: Expr -> Expr -> Clause -> Goal
-unifyClause head body (chead, cbody)
+unifyClause head body (chead, cbody, _)
   = fresh (length is) $ \is' -> let vs = zip is is' in conj (unify head (evalExpr vs chead)) (unify body (evalExpr vs cbody))
   where is = nub $ searchVars [] chead ++ searchVars [] cbody

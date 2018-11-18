@@ -38,6 +38,7 @@ tokenp = lnToken (some (oneOfL "0123456789"))
          <|> acceptL "<="
          <|> acceptL ">="
          <|> acceptL "!;"
+         <|> acceptL "!."
          <|> acceptL "//"
          <|> quotep
          <|> ((:"")<$>) <$> oneOfL "()[]{}<>.,;=|+-*/%"
@@ -70,8 +71,8 @@ directivep = acceptL [":-"] *> orp <* acceptL ["."]
 clausep :: PParser ((String, Int), Clause)
 clausep = do head@(Compound name params) <- callp <|> parp
              body <- (acceptL [":-"] *> orp) <|> pure (Compound "tosi" [])
-             acceptL ["."]
-             return ((name, length params), (head, body))
+             mode <- (acceptL ["."] *> pure NoCut) <|> (acceptL ["!."] *> pure Cut)
+             return ((name, length params), (head, body, mode))
 
 dcgp :: PParser ((String, Int), Clause)
 dcgp = do head@(Compound name params) <- callp <|> parp
@@ -85,7 +86,7 @@ dcgp = do head@(Compound name params) <- callp <|> parp
                      Nothing -> return $ body start end
                      Just sc -> do v <- newVar
                                    return $ Compound "," [body start v, sc end v]
-          return $ ((name, length params + 2), (head', body'))
+          return $ ((name, length params + 2), (head', body', NoCut))
 
 dcgEmptyBodyp :: PParser (Expr -> Expr -> Expr)
 dcgEmptyBodyp = acceptL ["."] *> pure dcgEmpty
