@@ -24,18 +24,18 @@ takaperin_([A|At]) --> takaperin_(At), [A].
 % alijonot järjestettynä suurimmasta pienimpään
 
 alijono2(X, Y) :-
-    muuttuja(X),
-    pituus(Y, PituusY),
-    välillä(0, PituusY, I),
-    PituusX on PituusY - I,
-    pituus(X, PituusX),
-    alijono(X, Y).
+	muuttuja(X),
+	pituus(Y, PituusY),
+	välillä(0, PituusY, I),
+	PituusX on PituusY - I,
+	pituus(X, PituusX),
+	alijono(X, Y).
 alijono2(X, Y) :-
-    \+ muuttuja(X),
-    pituus(X, PituusX),
-    PituusY >= PituusX,
-    pituus(Y, PituusY),
-    alijono(X, Y).
+	\+ muuttuja(X),
+	pituus(X, PituusX),
+	PituusY >= PituusX,
+	pituus(Y, PituusY),
+	alijono(X, Y).
 
 järjestyksessä([]).
 järjestyksessä([_]).
@@ -60,3 +60,19 @@ jaa([A,B|L], [A|X], [B|Y]) :- jaa(L, X, Y).
 
 kaikki_välillä(_, _, []).
 kaikki_välillä(A, B, [I|It]) :- välillä(A, B, I), kaikki_välillä(A, B, It).
+
+kuvaa(_, []).
+kuvaa(P, [A|At]) :-
+	kutsu(P, [A]).
+	kuvaa(P, At).
+
+kuvaa(_, [], []).
+kuvaa(P, [A|At], [B|Bt]) :-
+	kutsu(P, [A, B]).
+	kuvaa(P, At, Bt).
+
+kutsu(P, At) :-
+	P =.. Tt,
+	lisää(Tt, At, Tt2),
+	P2 =.. Tt2,
+	P2.
