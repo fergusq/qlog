@@ -9,7 +9,9 @@ pituus_k([_|H], P) :- P>0, Z on P-1, pituus_k(H, Z).
 jäsen(X, [X|_]).
 jäsen(Y, [X|L]) :- jäsen(Y, L).
 
-lisää([A], X, [A|X]).
+sisältää(L, X) :- jäsen(X, L).
+
+lisää([], X, X).
 lisää([A|X], Y, [A|Z]) :- lisää(X, Y, Z).
 
 alijono([], []).
@@ -63,12 +65,12 @@ kaikki_välillä(A, B, [I|It]) :- välillä(A, B, I), kaikki_välillä(A, B, It)
 
 kuvaa(_, []).
 kuvaa(P, [A|At]) :-
-	kutsu(P, [A]).
+	kutsu(P, [A]),
 	kuvaa(P, At).
 
 kuvaa(_, [], []).
 kuvaa(P, [A|At], [B|Bt]) :-
-	kutsu(P, [A, B]).
+	kutsu(P, [A, B]),
 	kuvaa(P, At, Bt).
 
 kutsu(P, At) :-
