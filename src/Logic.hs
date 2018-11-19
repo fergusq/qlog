@@ -129,16 +129,23 @@ unify a b vvs state = let a' = walk state a
                            else case (a', b') of
                                   ((Variable v), _) -> true vvs $ addSubstitution v b state
                                   (_, (Variable v)) -> true vvs $ addSubstitution v a state
-                                  (Compound v xs, Compound u ys) -> if v == u
-                                                                      then unifyAll xs ys vvs state
+                                  (Compound v xs, Compound u ys) -> if v == u && length xs == length ys
+                                                                      then foldr conj true (zipWith unify xs ys) vvs state
                                                                       else false vvs state
                                   (_, _) -> false vvs state
 
-unifyAll :: [Expr] -> [Expr] -> Goal
-unifyAll []    [] = true
-unifyAll (_:_) [] = false
-unifyAll [] (_:_) = false
-unifyAll (x:xs) (y:ys) = conj (unify x y) (unifyAll xs ys)
+partialUnify :: Expr -> Expr -> Goal
+partialUnify a b vvs state = let a' = walk state a
+                                 b' = walk state b
+                             in if a' == b'
+                                  then true vvs state
+                                  else case (a', b') of
+                                         ((Variable v), _) -> true vvs $ addSubstitution v b state
+                                         (_, (Variable v)) -> true vvs $ addSubstitution v a state
+                                         (Compound v xs, Compound u ys) -> if v == u && length xs == length ys
+                                                                             then foldr conj true (zipWith partialUnify xs ys) vvs state
+                                                                             else true vvs state
+                                         (_, _) -> true vvs state
 
 -- Conjunction and disjunction
 
@@ -212,10 +219,11 @@ searchVars _  (Variable _) = error "määrittelemätön muuttuja (!!)"
 builtinPredicates :: [String]
 builtinPredicates = [
   ";", "!;", ",", "=", "\\+", "=..",
-  "kaikille", "tosi", "epätosi", "on", "muuttuja", "kokonaisluku",
+  "kaikille", "kaikki", "yksi",
+  "tosi", "epätosi", "on", "muuttuja", "kokonaisluku",
   "<", ">", "<=", ">=", "välillä",
   "klausuuli", "listaus",
-  "näytä", "tulosta", "rivinvaihto"]
+  "näytä", "tulosta", "rivinvaihto", "sisennys"]
 
 eval' :: M.Map (String, Int) [Clause] -> [(String, Expr)] -> Expr -> Goal
 eval' fs vs e@(Variable _)                = \vvs state -> let e' = walk state e
@@ -228,6 +236,7 @@ eval' fs vs (Compound ";" [a, b])         = disj (eval' fs vs a) (eval' fs vs b)
 eval' fs vs (Compound "!;" [a, b])        = cutDisj (eval' fs vs a) (eval' fs vs b)
 eval' fs vs (Compound "," [a, b])         = conj (eval' fs vs a) (eval' fs vs b)
 eval' fs vs (Compound "=" [a, b])         = unify a b
+eval' fs vs (Compound "~=" [a, b])        = partialUnify a b
 eval' fs vs (Compound "\\+" [e])          = \vvs state -> do c <- liftIO (L.null (eval' fs vs e vvs state))
                                                              boolToGoal c vvs state
 eval' fs vs (Compound "kaikille" [a, b])  = \vvs state -> do cs <- liftIO . L.toReverseList $
@@ -239,6 +248,10 @@ eval' fs vs (Compound "kaikki" [t, g, b]) = \vvs state -> do cs <- liftIO . L.to
                                                                      do state' <- eval' fs vs g vvs state
                                                                         return $ deepWalk state' t
                                                              unify b (listToExpr cs) vvs state
+eval' fs vs (Compound "yksi" [g])         = \vvs state -> do head <- liftIO . L.uncons $  eval' fs vs g vvs state
+                                                             case head of
+                                                               Nothing -> false vvs state
+                                                               Just (state', _) -> pure state'
 eval' fs vs (Compound "tosi" [])          = true
 eval' fs vs (Compound "epätosi" [])       = false
 eval' fs vs (Compound "on" [a, b])        = \vvs state -> unify a (evalMath state b) vvs state
@@ -249,7 +262,7 @@ eval' fs vs (Compound "<" [a, b])         = \vvs state -> case map (walk state) 
                                                             [Variable i, SymbolInt j] -> intListToStream i [j-1,j-2..] state
                                                             [SymbolInt i, Variable j] -> intListToStream j [i+1,i+2..] state
                                                             [Variable i, Variable j] -> intListToStream j [1..] $ addSubstitution i (SymbolInt 0) state
-                                                            _ -> false vvs state
+                                                            _ -> evalUserPredicate fs vs (Compound "<" [a, b]) vvs state
 eval' fs vs (Compound ">" [a, b])         = eval' fs vs (Compound "<" [b, a])
 eval' fs vs (Compound "<=" [a, b])        = disj (unify a b) (eval' fs vs (Compound "<" [a, b]))
 eval' fs vs (Compound ">=" [a, b])        = eval' fs vs (Compound "<=" [b, a])
@@ -303,11 +316,17 @@ eval' fs vs (Compound "=.." [p, l])       = \vvs state -> let e = walk state p
                                                                _ -> false vvs state
 eval' fs vs (Compound "näytä" [e])        = \_ state -> liftIO (putStr . show $ deepWalk state e) >> pure state
 eval' fs vs (Compound "tulosta" [e])      = \_ state -> liftIO (putStr . exprToStr $ deepWalk state e) >> pure state
+eval' fs vs (Compound "sisennys" [e])     = \vvs state -> case walk state e of
+                                                            SymbolInt i -> liftIO (putStr $ replicate (fromInteger i) ' ') >> pure state
+                                                            _ -> false vvs state
 eval' fs vs (Compound "rivinvaihto" [])   = \_ state -> liftIO (putStr "\n") >> pure state
 eval' fs vs (Compound "rv" [])            = eval' fs vs (Compound "rivinvaihto" [])
-eval' fs vs e@(Compound f   args)         = case M.lookup (f, length args) fs of
-                                              Just clauses -> evalPredicate fs e clauses
-                                              Nothing -> error ("määrittelemätön funktori "++f++"/"++show (length args))
+eval' fs vs e@(Compound _ _)              = evalUserPredicate fs vs e
+
+evalUserPredicate :: M.Map (String, Int) [Clause] -> [(String, Expr)] -> Expr -> Goal
+evalUserPredicate fs vs e@(Compound f args) = case M.lookup (f, length args) fs of
+                                                Just clauses -> evalPredicate fs e clauses
+                                                Nothing -> error ("määrittelemätön funktori "++f++"/"++show (length args))
 
 listToStream :: Int -> [Expr] -> Substitutions -> L.ListT IO Substitutions
 listToStream var exprs state = L.fromFoldable $ map (flip (addSubstitution var) state) exprs
@@ -317,7 +336,7 @@ intListToStream var ints = listToStream var $ map SymbolInt ints
 
 evalPredicate :: M.Map (String, Int) [Clause] -> Expr -> [Clause] -> Goal
 evalPredicate _  _    [] = false
-evalPredicate fs pred (c@(_, _, mode):cs) = disj' (evalPredicate' fs pred c) $ evalPredicate fs pred cs
+evalPredicate fs pred (c@(_, _, mode):cs) = disj' (evalPredicate' fs pred c) (evalPredicate fs pred cs)
   where disj' = case mode of
                   NoCut -> disj
                   Cut -> cutDisj
@@ -338,7 +357,7 @@ evalMath state e = case walk state e of
                                             ("-", [SymbolInt i, SymbolInt j]) -> SymbolInt (i-j)
                                             ("*", [SymbolInt i, SymbolInt j]) -> SymbolInt (i*j)
                                             ("/", [SymbolInt i, SymbolInt j]) -> SymbolInt (i `div` j)
-                                            ("%", [SymbolInt i, SymbolInt j]) -> SymbolInt (i `mod` j)
+                                            ("mod", [SymbolInt i, SymbolInt j]) -> SymbolInt (i `mod` j)
                                             _ -> t
                      (Variable _) -> error "sitomaton muuttuja"
                      t -> t

@@ -34,6 +34,7 @@ tokenp = lnToken (some (oneOfL "0123456789"))
          <|> acceptL "-->"
          <|> acceptL "\\+"
          <|> acceptL "\\="
+         <|> acceptL "~="
          <|> acceptL "=.."
          <|> acceptL "<="
          <|> acceptL ">="
@@ -41,7 +42,7 @@ tokenp = lnToken (some (oneOfL "0123456789"))
          <|> acceptL "!."
          <|> acceptL "//"
          <|> quotep
-         <|> ((:"")<$>) <$> oneOfL "()[]{}<>.,;=|+-*/%"
+         <|> ((:"")<$>) <$> oneOfL "()[]{}<>.,;=|+-*/"
 
 quotep :: TParser (LNToken String)
 quotep = acceptL "\"" *>
@@ -147,19 +148,24 @@ andp = operatorp [","] firstp
 firstp = unifyp
 
 unifyp :: PParser Expr
-unifyp = operatorp ["on", "=", "\\=", "<", ">", "<=", ">=", "=.."] sump
+unifyp = operatorp ["on", "=", "\\=", "~=", "<", ">", "<=", ">=", "=.."] sump
 
 sump :: PParser Expr
 sump = operatorp ["+", "-"] termp
 
 termp :: PParser Expr
-termp = operatorp ["*", "/", "//", "%"] simplep
+termp = operatorp ["*", "/", "//"] simplep
 
 simplep :: PParser Expr
 simplep = intp <|> varp <|> anonVarp <|> callp <|> listp <|> stringp <|> negp <|> parp
 
 intp :: PParser Expr
-intp = do s <- nextToken
+intp = nump <|> do acceptL ["-"]
+                   (SymbolInt i) <- intp
+                   return . SymbolInt $ negate i
+
+nump :: PParser Expr
+nump = do s <- nextToken
           unless (all (`elem` "0123456789") (content s)) $
             parsingError s "int token"
           return . SymbolInt . read $ content s
