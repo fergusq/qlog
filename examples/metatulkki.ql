@@ -133,7 +133,7 @@ toista(I, P) :-
 	)).
 
 näytä_sisennetty(F, S) :-
-	toista(S, tulosta(" ")),
+	sisennys(S),
 	näytä(F),
 	rivinvaihto.
 
