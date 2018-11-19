@@ -12,29 +12,33 @@ import Logic
 import Parser
 import ParserCombinators
 
-type ClauseMap = M.Map (String, Int) [Clause]
+data CompilerState = CS { clauseMap :: M.Map (String, Int) [Clause], loadedFiles :: [String] }
+emptyCompilerState = CS { clauseMap = M.empty, loadedFiles = [] }
 
-compileFile :: ClauseMap -> String -> IO (Either [ParsingError] ClauseMap)
-compileFile clauseMap filename = do code <- readFile filename
-                                    withCurrentDirectory (takeDirectory filename) $
-                                      compileClauses clauseMap code
+compileFile :: CompilerState -> String -> IO (Either [ParsingError] CompilerState)
+compileFile state filename
+  | filename `elem` loadedFiles state = return $ Right state
+  | otherwise = do code <- readFile filename
+                   let state' = state { loadedFiles = filename : loadedFiles state }
+                   withCurrentDirectory (takeDirectory filename) $
+                     compileClauses state' code
 
-compileClauses :: ClauseMap -> String -> IO (Either [ParsingError] ClauseMap)
-compileClauses clauseMap code = bindMEither (compileClauses' clauseMap) $ parseClauses code
+compileClauses :: CompilerState -> String -> IO (Either [ParsingError] CompilerState)
+compileClauses state code = parseClauses code `bindMEither` compileClauses' state
 
-compileClauses' :: ClauseMap -> [Statement] -> IO (Either [ParsingError] ClauseMap)
-compileClauses' clauseMap [] = return $ Right clauseMap
-compileClauses' clauseMap (ClauseDeclaration (signature, clause) : as)
-  = let clauses = fromMaybe [] $ M.lookup signature clauseMap
-        clauseMap' = M.insert signature (clauses++[clause]) clauseMap
-    in compileClauses' clauseMap' as
-compileClauses' clauseMap (Directive list@(Compound "." _) : as)
+compileClauses' :: CompilerState -> [Statement] -> IO (Either [ParsingError] CompilerState)
+compileClauses' state [] = return $ Right state
+compileClauses' state (ClauseDeclaration (signature, clause) : as)
+  = let clauses = fromMaybe [] . M.lookup signature $ clauseMap state
+        state' = state { clauseMap = M.insert signature (clauses++[clause]) $ clauseMap state }
+    in compileClauses' state' as
+compileClauses' state (Directive list@(Compound "." _) : as)
   = do let files = exprToList list
        let filenames = map ((++".ql") . show) files
-       clauseMap' <- foldM (\m f -> bindMEither (\m' -> compileFile m' f) m) (Right clauseMap) filenames
-       bindMEither (flip compileClauses' as) clauseMap'
+       state' <- foldM (\m f -> bindMEither m $ \m' -> compileFile m' f) (Right state) filenames
+       state' `bindMEither` flip compileClauses' as
 
-bindMEither :: (Monad m) => (a -> m (Either l b)) -> Either l a -> m (Either l b)
-bindMEither f e = case e of
+bindMEither :: (Monad m) => Either l a -> (a -> m (Either l b)) -> m (Either l b)
+bindMEither e f = case e of
                     Left l -> return $ Left l
                     Right r -> f r

@@ -20,10 +20,11 @@ import Parser
 
 main :: IO ()
 main = do [file] <- getArgs
-          clauses <- compileFile M.empty file
+          clauses <- compileFile emptyCompilerState file
           case clauses of
             Left error -> print error >> exitFailure
-            Right fs -> runInputT (programSettings fs) $ queryLoop fs
+            Right state -> let fs = clauseMap state
+                           in runInputT (programSettings fs) $ queryLoop fs
 
 programSettings :: M.Map (String, Int) [Clause] -> Settings IO
 programSettings fs = setComplete (completer fs) defaultSettings
