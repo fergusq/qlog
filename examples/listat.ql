@@ -6,6 +6,17 @@ pituus_m([_|H], P) :- pituus_m(H, Z), P on Z+1.
 pituus_k([], 0).
 pituus_k([_|H], P) :- P>0, Z on P-1, pituus_k(H, Z).
 
+ns0(N, L, X) :- nsK(0, N, L, X).
+ns1(N, L, X) :- nsK(1, N, L, X).
+
+nsK(K, N, L, X) :- muuttuja(N), \+ muuttuja(L), nsK_m(K, N, L, X) !; nsK_k(K, N, L, X).
+
+nsK_m(K, K, [X|_], X).
+nsK_m(K, N, [_|H], X) :- nsK_m(K, M, H, X), N on M+1.
+
+nsK_k(K, K, [X|_], X).
+nsK_k(K, N, [_|H], X) :- N>K, M on N-1, nsK_k(K, M, H, X).
+
 jäsen(X, [X|_]).
 jäsen(Y, [X|L]) :- jäsen(Y, L).
 
