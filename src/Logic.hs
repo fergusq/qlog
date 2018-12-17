@@ -3,11 +3,12 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO)
-import Data.Char (isAlphaNum, chr)
+import Data.Char (isAlphaNum, chr, ord)
 import Data.List
 import Data.Maybe
 import qualified Data.Map as M
 import qualified Data.Set as S
+import System.Directory (doesFileExist)
 
 import qualified ListT as L
 
@@ -47,6 +48,9 @@ strExprToStr _ = Nothing
 
 listToExpr :: [Expr] -> Expr
 listToExpr = foldr (\a b -> Compound "." [a, b]) (Compound "[]" [])
+
+strToStrExpr :: String -> Expr
+strToStrExpr = listToExpr . map (SymbolInt . toInteger . ord)
 
 exprToList :: Expr -> [Expr]
 exprToList (Compound "[]" [])    = []
@@ -223,7 +227,8 @@ builtinPredicates = [
   "tosi", "epätosi", "on", "muuttuja", "kokonaisluku",
   "<", ">", "<=", ">=", "välillä",
   "klausuuli", "listaus",
-  "näytä", "tulosta", "rivinvaihto", "sisennys"]
+  "näytä", "tulosta", "rivinvaihto", "sisennys",
+  "sisältö", "kirjoita"]
 
 eval' :: M.Map (String, Int) [Clause] -> [(String, Expr)] -> Expr -> Goal
 eval' fs vs e@(Variable _)                = \vvs state -> let e' = walk state e
@@ -317,10 +322,23 @@ eval' fs vs (Compound "=.." [p, l])       = \vvs state -> let e = walk state p
 eval' fs vs (Compound "näytä" [e])        = \_ state -> liftIO (putStr . show $ deepWalk state e) >> pure state
 eval' fs vs (Compound "tulosta" [e])      = \_ state -> liftIO (putStr . exprToStr $ deepWalk state e) >> pure state
 eval' fs vs (Compound "sisennys" [e])     = \vvs state -> case walk state e of
-                                                            SymbolInt i -> liftIO (putStr $ replicate (fromInteger i) ' ') >> pure state
+                                                            SymbolInt i -> liftIO (putStr $ replicate (fromInteger i) ' ') >> true vvs state
                                                             _ -> false vvs state
 eval' fs vs (Compound "rivinvaihto" [])   = \_ state -> liftIO (putStr "\n") >> pure state
 eval' fs vs (Compound "rv" [])            = eval' fs vs (Compound "rivinvaihto" [])
+eval' fs vs (Compound "sisältö" [f, c])   = \vvs state -> case map (walk state) [f, c] of
+                                                            [f', c'] ->
+                                                              case strExprToStr f' of
+                                                                Just fileName -> do dfe <- liftIO $ doesFileExist fileName
+                                                                                    if dfe
+                                                                                      then do content <- liftIO $ readFile fileName
+                                                                                              unify c' (strToStrExpr content) vvs state
+                                                                                      else false vvs state
+                                                                Nothing -> false vvs state
+eval' fs vs (Compound "kirjoita" [f, c])  = \vvs state -> case map (strExprToStr . walk state) [f, c] of
+                                                            [Just fileName, Just content] -> do liftIO $ writeFile fileName content
+                                                                                                true vvs state
+                                                            _ -> false vvs state
 eval' fs vs e@(Compound _ _)              = evalUserPredicate fs vs e
 
 evalUserPredicate :: M.Map (String, Int) [Clause] -> [(String, Expr)] -> Expr -> Goal
