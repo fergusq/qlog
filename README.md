@@ -17,6 +17,8 @@
 |maplist/2|kuvaa/2       |listat.ql
 |maplist/3|kuvaa/3       |listat.ql
 |member/2 |jäsen/2       |listat.ql
+|nth0/3   |ns0/3         |listat.ql
+|nth1/3   |ns1/3         |listat.ql
 |reverse/2|takaperin/2   |listat.ql
 |sublist/2|alijono/2     |listat.ql
 |true/0   |tosi/0        |Logic.hs
